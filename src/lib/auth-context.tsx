@@ -1,7 +1,8 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
 import {
-  getRedirectResult, onAuthStateChanged, signInWithRedirect, signOut, User,
+  browserLocalPersistence, onAuthStateChanged, setPersistence,
+  signInWithPopup, signOut, User,
 } from "firebase/auth";
 import { auth, googleProvider, OWNER_UID } from "./firebase";
 
@@ -20,8 +21,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 리다이렉트 로그인 결과 처리 — 첫 진입 시 1회
-    getRedirectResult(auth).catch((e) => console.error("Auth redirect error:", e));
+    // 인증 상태를 로컬에 영속 저장 (새로고침 후에도 유지)
+    setPersistence(auth, browserLocalPersistence).catch((e) =>
+      console.error("Persistence error:", e)
+    );
 
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -34,7 +37,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     loading,
     isOwner: !!user && user.uid === OWNER_UID,
-    signIn: async () => { await signInWithRedirect(auth, googleProvider); },
+    signIn: async () => {
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (e) {
+        console.error("Sign-in error:", e);
+        throw e;
+      }
+    },
     signOutUser: async () => { await signOut(auth); },
   };
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
