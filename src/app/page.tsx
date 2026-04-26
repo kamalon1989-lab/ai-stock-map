@@ -162,19 +162,19 @@ export default function MapPage() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-xl font-bold tracking-tight">AI 생태계 맵</h1>
-            <span className="text-xs text-slate-500">{sectors.length} 섹터 · {totalCompanies} 종목</span>
+          <div className="flex items-baseline gap-3 shrink-0">
+            <h1 className="text-xl font-bold tracking-tight whitespace-nowrap">AI 생태계 맵</h1>
+            <span className="text-xs text-slate-500 whitespace-nowrap hidden sm:inline">{sectors.length} 섹터 · {totalCompanies} 종목</span>
           </div>
           <input
             value={filter} onChange={(e) => setFilter(e.target.value)}
             placeholder="🔍  티커 / 이름 / 태그"
-            className={`ml-4 ${inputClass} w-72 max-w-full`}
+            className={`${inputClass} flex-1 min-w-0 max-w-xs`}
           />
-          <div className="ml-auto flex gap-2 items-center">
+          <div className="ml-auto flex gap-2 items-center shrink-0">
             <button
               onClick={() => setReorderMode((v) => !v)}
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                 reorderMode ? "bg-amber-700 hover:bg-amber-600" : "bg-slate-800 hover:bg-slate-700"
               }`}
             >
@@ -213,7 +213,7 @@ export default function MapPage() {
             <div className="relative">
               <button
                 onClick={() => setOpenMenu((m) => (m === "export" ? null : "export"))}
-                className="px-3 py-2 rounded-md bg-emerald-700 hover:bg-emerald-600 text-sm font-medium transition-colors"
+                className="px-3 py-2 rounded-md bg-emerald-700 hover:bg-emerald-600 text-sm font-medium transition-colors whitespace-nowrap"
               >
                 내보내기 ▾
               </button>

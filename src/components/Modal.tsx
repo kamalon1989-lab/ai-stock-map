@@ -68,8 +68,8 @@ export const inputClass =
   "w-full bg-slate-800 border border-slate-700 focus:border-indigo-500 rounded-md px-3 py-2 text-sm outline-none transition-colors placeholder:text-slate-600";
 
 export const btnPrimary =
-  "px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors";
+  "px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors whitespace-nowrap shrink-0";
 export const btnSecondary =
-  "px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-sm font-medium transition-colors";
+  "px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-sm font-medium transition-colors whitespace-nowrap shrink-0";
 export const btnDanger =
-  "px-4 py-2 rounded-md bg-rose-700 hover:bg-rose-600 text-sm font-medium transition-colors";
+  "px-4 py-2 rounded-md bg-rose-700 hover:bg-rose-600 text-sm font-medium transition-colors whitespace-nowrap shrink-0";
