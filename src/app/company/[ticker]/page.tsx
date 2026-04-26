@@ -12,6 +12,7 @@ import {
   buildCompanyExport, buildPromptPayload, downloadJSON,
 } from "@/lib/export";
 import NotesSection from "@/components/NotesSection";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Field, btnPrimary, btnSecondary, inputClass } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 
@@ -123,30 +124,31 @@ export default function CompanyPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur border-b border-slate-800">
-        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center gap-3">
-          <Link href="/" className="text-slate-400 hover:text-white text-sm flex items-center gap-1">
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-3 flex items-center gap-2 sm:gap-3">
+          <Link href="/" className="text-slate-400 hover:text-white text-sm flex items-center gap-1 shrink-0">
             <span>←</span> 맵
           </Link>
-          <span className="text-slate-700">/</span>
+          <span className="text-slate-700 hidden sm:inline">/</span>
           {sectorObj && (
             <Link href={`/sector/${sectorObj.id}`}
-              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors">
-              <span className="w-2 h-2 rounded-full" style={{ background: sectorObj.color }} />
-              {sectorObj.name}
+              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors min-w-0 truncate">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sectorObj.color }} />
+              <span className="truncate">{sectorObj.name}</span>
             </Link>
           )}
-          <div className="ml-auto flex gap-2">
-            <button onClick={onExport} className="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-sm font-medium transition-colors">
+          <div className="ml-auto flex gap-1.5 sm:gap-2 items-center shrink-0">
+            <button onClick={onExport} className="hidden md:inline-block px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-sm font-medium transition-colors whitespace-nowrap">
               내보내기
             </button>
-            <button onClick={onCopyPrompt} className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition-colors">
+            <button onClick={onCopyPrompt} className="hidden sm:inline-block px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition-colors whitespace-nowrap">
               AI 프롬프트 복사
             </button>
+            <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-6 py-6">
+      <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
         <section className="mb-8">
           {editingHeader ? (
             <div className="space-y-3 p-4 rounded-xl border border-indigo-700/50 bg-indigo-950/20">

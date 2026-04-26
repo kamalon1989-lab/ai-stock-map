@@ -107,13 +107,17 @@ export const bulkUpsertSectorBlocks = (uid: string, sectorId: string, bs: Block[
 
 // --- Realtime helpers ---
 export function watchCompanies(uid: string, cb: (rows: Company[]) => void) {
-  return onSnapshot(companiesCol(uid), (snap) =>
-    cb(snap.docs.map((d) => d.data() as Company))
+  return onSnapshot(
+    companiesCol(uid),
+    (snap) => cb(snap.docs.map((d) => d.data() as Company)),
+    (err) => console.error("watchCompanies error:", err)
   );
 }
 export function watchSectors(uid: string, cb: (rows: Sector[]) => void) {
-  return onSnapshot(query(sectorsCol(uid), orderBy("order", "asc")), (snap) =>
-    cb(snap.docs.map((d) => d.data() as Sector))
+  return onSnapshot(
+    query(sectorsCol(uid), orderBy("order", "asc")),
+    (snap) => cb(snap.docs.map((d) => d.data() as Sector)),
+    (err) => console.error("watchSectors error:", err)
   );
 }
 export { serverTimestamp };

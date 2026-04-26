@@ -9,6 +9,7 @@ import {
 } from "@/lib/data";
 import type { Block, Company, Sector } from "@/lib/types";
 import NotesSection from "@/components/NotesSection";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Field, btnPrimary, btnSecondary, inputClass } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 
@@ -70,19 +71,22 @@ export default function SectorPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur border-b border-slate-800">
-        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center gap-3">
-          <Link href="/" className="text-slate-400 hover:text-white text-sm flex items-center gap-1">
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-3 flex items-center gap-2 sm:gap-3">
+          <Link href="/" className="text-slate-400 hover:text-white text-sm flex items-center gap-1 shrink-0">
             <span>←</span> 맵
           </Link>
-          <span className="text-slate-700">/</span>
-          <span className="text-xs text-slate-400 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full" style={{ background: sector.color }} />
+          <span className="text-slate-700 hidden sm:inline">/</span>
+          <span className="text-xs text-slate-400 flex items-center gap-1.5 min-w-0">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sector.color }} />
             섹터
           </span>
+          <div className="ml-auto flex items-center shrink-0">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-6 py-6">
+      <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
         <section className="mb-8">
           {editingHeader ? (
             <div className="space-y-3 p-4 rounded-xl border border-indigo-700/50 bg-indigo-950/20">

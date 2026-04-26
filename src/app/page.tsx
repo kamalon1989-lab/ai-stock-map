@@ -14,6 +14,7 @@ import {
 } from "@/lib/import";
 import Modal, { Field, btnPrimary, btnSecondary, inputClass } from "@/components/Modal";
 import ImportModal from "@/components/ImportModal";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -161,28 +162,35 @@ export default function MapPage() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
-          <div className="flex items-baseline gap-3 shrink-0">
-            <h1 className="text-xl font-bold tracking-tight whitespace-nowrap">AI 생태계 맵</h1>
-            <span className="text-xs text-slate-500 whitespace-nowrap hidden sm:inline">{sectors.length} 섹터 · {totalCompanies} 종목</span>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-3">
+          <div className="flex items-baseline gap-2 shrink-0">
+            <h1 className="text-base sm:text-xl font-bold tracking-tight whitespace-nowrap">AI 생태계 맵</h1>
+            <span className="text-xs text-slate-500 whitespace-nowrap hidden md:inline">{sectors.length} 섹터 · {totalCompanies} 종목</span>
           </div>
           <input
             value={filter} onChange={(e) => setFilter(e.target.value)}
-            placeholder="🔍  티커 / 이름 / 태그"
+            placeholder="🔍 검색"
             className={`${inputClass} flex-1 min-w-0 max-w-xs`}
           />
-          <div className="ml-auto flex gap-2 items-center shrink-0">
+          <div className="ml-auto flex gap-1.5 sm:gap-2 items-center shrink-0">
+            {/* 데스크탑 전용: 정렬 편집 */}
             <button
               onClick={() => setReorderMode((v) => !v)}
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+              className={`hidden md:inline-block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                 reorderMode ? "bg-amber-700 hover:bg-amber-600" : "bg-slate-800 hover:bg-slate-700"
               }`}
             >
               {reorderMode ? "정렬 완료" : "정렬 편집"}
             </button>
-            <button onClick={openAddSector} className={btnSecondary}>+ 섹터</button>
 
-            <div className="relative">
+            {/* + 섹터: 항상 표시. 모바일에선 + 만 */}
+            <button onClick={openAddSector} className={btnSecondary} title="섹터 추가">
+              <span className="hidden sm:inline">+ 섹터</span>
+              <span className="sm:hidden">+</span>
+            </button>
+
+            {/* 데스크탑 전용: 가져오기 / 내보내기 */}
+            <div className="relative hidden md:block">
               <button
                 onClick={() => setOpenMenu((m) => (m === "import" ? null : "import"))}
                 className={btnSecondary}
@@ -210,7 +218,7 @@ export default function MapPage() {
               )}
             </div>
 
-            <div className="relative">
+            <div className="relative hidden md:block">
               <button
                 onClick={() => setOpenMenu((m) => (m === "export" ? null : "export"))}
                 className="px-3 py-2 rounded-md bg-emerald-700 hover:bg-emerald-600 text-sm font-medium transition-colors whitespace-nowrap"
@@ -238,7 +246,13 @@ export default function MapPage() {
               )}
             </div>
 
-            <button onClick={signOutUser} className={btnSecondary}>로그아웃</button>
+            <ThemeToggle />
+
+            <button onClick={signOutUser} className={`${btnSecondary} hidden sm:inline-block`}>로그아웃</button>
+            {/* 모바일: 로그아웃 아이콘만 */}
+            <button onClick={signOutUser} className={`${btnSecondary} sm:hidden`} title="로그아웃" aria-label="로그아웃">
+              ⎋
+            </button>
           </div>
         </div>
         {reorderMode && (
@@ -248,7 +262,7 @@ export default function MapPage() {
         )}
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-6">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
         {grouped.length === 0 && (
           <div className="text-slate-400 py-12 text-center border border-dashed border-slate-800 rounded-xl">
             섹터가 없습니다. 우상단 <span className="text-slate-200 font-medium">[+ 섹터]</span> 로 시작하세요.

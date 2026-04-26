@@ -5,23 +5,97 @@
 :root {
   color-scheme: dark;
 }
+html.light {
+  color-scheme: light;
+}
 
 html, body {
   background: #0b0d12;
   color: #e6e8ee;
   font-feature-settings: "cv11", "ss01";
+  transition: background-color 0.15s, color 0.15s;
 }
 
-/* 부드러운 페이드인 (모달/토스트용) */
-@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-.animate-in.fade-in { animation: fadeIn .15s ease-out; }
+html.light body {
+  background: #f8fafc;
+  color: #0f172a;
+}
 
-/* 스크롤바 살짝 정돈 */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: #334155; }
+/* ===== 라이트 모드 색상 오버라이드 =====
+   다크 테마 변종을 라이트 모드에서만 다른 색으로 강제. */
+html.light .bg-slate-950 { background-color: #f8fafc; }
+html.light .bg-slate-950\/80 { background-color: rgba(248, 250, 252, 0.85); }
 
+html.light .bg-slate-900 { background-color: #ffffff; }
+html.light .bg-slate-900\/30 { background-color: rgba(241, 245, 249, 0.5); }
+html.light .bg-slate-900\/40 { background-color: rgba(241, 245, 249, 0.6); }
+html.light .bg-slate-900\/50 { background-color: rgba(241, 245, 249, 0.75); }
+html.light .bg-slate-900\/90 { background-color: rgba(255, 255, 255, 0.95); }
+
+html.light .bg-slate-800 { background-color: #f1f5f9; }
+html.light .bg-slate-800\/60 { background-color: rgba(241, 245, 249, 0.7); }
+html.light .bg-slate-800\/70 { background-color: rgba(241, 245, 249, 0.8); }
+html.light .bg-slate-800\/90 { background-color: rgba(241, 245, 249, 0.95); }
+
+html.light .bg-slate-700 { background-color: #e2e8f0; }
+
+/* hover 변종 */
+html.light .hover\:bg-slate-700:hover { background-color: #cbd5e1; }
+html.light .hover\:bg-slate-800:hover { background-color: #e2e8f0; }
+html.light .hover\:bg-slate-600:hover { background-color: #94a3b8; }
+
+/* 보더 */
+html.light .border-slate-800 { border-color: #e2e8f0; }
+html.light .border-slate-800\/60 { border-color: rgba(226, 232, 240, 0.6); }
+html.light .border-slate-700 { border-color: #cbd5e1; }
+html.light .hover\:border-slate-700:hover { border-color: #94a3b8; }
+
+/* 텍스트 — 다크에서 밝게 → 라이트에서 어둡게 */
+html.light .text-slate-200 { color: #0f172a; }
+html.light .text-slate-300 { color: #1e293b; }
+html.light .text-slate-400 { color: #475569; }
+html.light .text-slate-500 { color: #64748b; }
+html.light .text-slate-600 { color: #94a3b8; }
+html.light .text-slate-700 { color: #cbd5e1; }
+html.light .hover\:text-white:hover { color: #0f172a; }
+
+/* 액센트 색은 라이트에서 톤 약간 조정 */
+html.light .text-emerald-400 { color: #059669; }
+html.light .bg-emerald-700 { background-color: #059669; }
+html.light .hover\:bg-emerald-600:hover { background-color: #047857; }
+html.light .bg-emerald-800 { background-color: #047857; }
+html.light .hover\:bg-emerald-700:hover { background-color: #065f46; }
+html.light .text-emerald-100 { color: #065f46; }
+html.light .border-emerald-700 { border-color: #6ee7b7; }
+html.light .border-emerald-800 { border-color: #34d399; }
+html.light .bg-emerald-950\/30 { background-color: rgba(209, 250, 229, 0.6); }
+html.light .bg-emerald-900\/90 { background-color: rgba(110, 231, 183, 0.95); }
+
+html.light .bg-indigo-600 { background-color: #4f46e5; }
+html.light .hover\:bg-indigo-500:hover { background-color: #4338ca; }
+html.light .bg-indigo-700 { background-color: #4338ca; }
+html.light .hover\:bg-indigo-600:hover { background-color: #3730a3; }
+html.light .border-indigo-700\/50 { border-color: rgba(99, 102, 241, 0.4); }
+html.light .bg-indigo-950\/20 { background-color: rgba(224, 231, 255, 0.5); }
+
+html.light .bg-rose-700 { background-color: #be123c; }
+html.light .hover\:bg-rose-600:hover { background-color: #9f1239; }
+html.light .hover\:bg-rose-900:hover { background-color: #fecdd3; }
+html.light .bg-rose-950\/40 { background-color: rgba(254, 205, 211, 0.5); }
+html.light .bg-rose-900\/90 { background-color: rgba(252, 165, 165, 0.95); }
+html.light .border-rose-900 { border-color: #fda4af; }
+html.light .border-rose-700 { border-color: #fda4af; }
+html.light .text-rose-100 { color: #881337; }
+html.light .hover\:text-rose-400:hover { color: #be123c; }
+
+html.light .bg-amber-700 { background-color: #b45309; }
+html.light .hover\:bg-amber-600:hover { background-color: #92400e; }
+html.light .text-amber-100 { color: #78350f; }
+html.light .text-amber-300 { color: #b45309; }
+html.light .border-amber-800 { border-color: #fcd34d; }
+html.light .bg-amber-950\/30 { background-color: rgba(254, 243, 199, 0.5); }
+
+/* TipTap 에디터 */
 .tiptap {
   outline: none;
   min-height: 300px;
@@ -32,3 +106,20 @@ html, body {
 .tiptap ul, .tiptap ol { padding-left: 1.4rem; }
 .tiptap blockquote { border-left: 3px solid #475569; padding-left: 0.8rem; color: #94a3b8; }
 .tiptap code { background: #1e293b; padding: 0.1rem 0.3rem; border-radius: 4px; }
+html.light .tiptap blockquote { border-left-color: #cbd5e1; color: #475569; }
+html.light .tiptap code { background: #f1f5f9; color: #0f172a; }
+
+/* placeholder */
+html.light input::placeholder, html.light textarea::placeholder { color: #94a3b8; }
+
+/* 부드러운 페이드인 */
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+.animate-in.fade-in { animation: fadeIn .15s ease-out; }
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
+html.light ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
