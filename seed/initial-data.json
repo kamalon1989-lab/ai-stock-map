@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "description": "AI 생태계 맵 초기 시드 데이터 — 섹터별 대표 미국 상장사",
+  "sectors": [
+    {
+      "id": "semiconductor",
+      "name": "반도체 (AI 칩)",
+      "description": "GPU·AI 가속기·HBM·파운드리 등 AI 연산의 물리적 기반",
+      "color": "#10b981",
+      "order": 0
+    },
+    {
+      "id": "cloud-infra",
+      "name": "클라우드 인프라",
+      "description": "AI 모델 학습·서빙을 위한 하이퍼스케일 클라우드 및 데이터센터",
+      "color": "#3b82f6",
+      "order": 1
+    },
+    {
+      "id": "foundation-model",
+      "name": "파운데이션 모델",
+      "description": "LLM·멀티모달 모델 자체 개발 및 보유 기업",
+      "color": "#8b5cf6",
+      "order": 2
+    },
+    {
+      "id": "ai-application",
+      "name": "AI 애플리케이션",
+      "description": "엔터프라이즈·소비자용 AI 활용 SaaS 및 플랫폼",
+      "color": "#ec4899",
+      "order": 3
+    },
+    {
+      "id": "data-observability",
+      "name": "데이터·관측",
+      "description": "AI에 필요한 데이터 파이프라인·벡터DB·MLOps·관측",
+      "color": "#f59e0b",
+      "order": 4
+    },
+    {
+      "id": "power-infra",
+      "name": "전력·냉각 인프라",
+      "description": "AI 데이터센터의 폭증하는 전력 수요와 냉각·전기설비",
+      "color": "#ef4444",
+      "order": 5
+    },
+    {
+      "id": "robotics-physical",
+      "name": "로보틱스·피지컬 AI",
+      "description": "자율주행·휴머노이드·산업용 로봇 등 물리세계 AI",
+      "color": "#06b6d4",
+      "order": 6
+    },
+    {
+      "id": "cybersecurity",
+      "name": "AI 사이버보안",
+      "description": "AI 기반 보안 또는 AI 시대의 신규 보안 수요를 다루는 기업",
+      "color": "#64748b",
+      "order": 7
+    }
+  ],
+  "companies": [
+    { "ticker": "NVDA", "name": "NVIDIA", "sectorId": "semiconductor", "oneLineSummary": "AI GPU·CUDA 생태계 사실상 표준. AI 인프라 사이클의 최대 수혜주.", "tags": ["#AI인프라", "#GPU"] },
+    { "ticker": "AVGO", "name": "Broadcom", "sectorId": "semiconductor", "oneLineSummary": "커스텀 AI ASIC(구글 TPU 등) 및 네트워킹 칩 강자.", "tags": ["#ASIC", "#네트워킹"] },
+    { "ticker": "AMD", "name": "Advanced Micro Devices", "sectorId": "semiconductor", "oneLineSummary": "MI300 시리즈로 NVDA 대안 자리 노리는 GPU 2위 사업자.", "tags": ["#GPU"] },
+    { "ticker": "TSM", "name": "Taiwan Semiconductor", "sectorId": "semiconductor", "oneLineSummary": "첨단 공정 파운드리 독점적 지위. AI 칩의 실질적 제조사.", "tags": ["#파운드리"] },
+    { "ticker": "ASML", "name": "ASML Holding", "sectorId": "semiconductor", "oneLineSummary": "EUV 노광장비 독점. 첨단 반도체 공정의 병목.", "tags": ["#장비"] },
+    { "ticker": "MU", "name": "Micron Technology", "sectorId": "semiconductor", "oneLineSummary": "HBM(고대역폭 메모리) 3강 중 하나. AI 메모리 수혜.", "tags": ["#HBM", "#메모리"] },
+
+    { "ticker": "MSFT", "name": "Microsoft", "sectorId": "cloud-infra", "oneLineSummary": "Azure + OpenAI 파트너십. AI 클라우드 1티어.", "tags": ["#클라우드", "#OpenAI"] },
+    { "ticker": "AMZN", "name": "Amazon", "sectorId": "cloud-infra", "oneLineSummary": "AWS — 시장 1위 클라우드. Anthropic 투자.", "tags": ["#클라우드", "#Anthropic"] },
+    { "ticker": "GOOGL", "name": "Alphabet", "sectorId": "cloud-infra", "oneLineSummary": "GCP + 자체 TPU + Gemini. 인프라·모델 수직 통합.", "tags": ["#클라우드", "#TPU"] },
+    { "ticker": "ORCL", "name": "Oracle", "sectorId": "cloud-infra", "oneLineSummary": "OCI로 AI 학습 인프라 점유율 빠르게 확대 중.", "tags": ["#클라우드"] },
+
+    { "ticker": "META", "name": "Meta Platforms", "sectorId": "foundation-model", "oneLineSummary": "Llama 오픈소스 모델 주도. 자체 추론 인프라 대규모 투자.", "tags": ["#오픈소스", "#Llama"] },
+    { "ticker": "GOOGL_FM", "name": "Alphabet (Gemini)", "sectorId": "foundation-model", "oneLineSummary": "Gemini 시리즈로 프론티어 모델 경쟁. 멀티모달 강점.", "tags": ["#Gemini"] },
+
+    { "ticker": "PLTR", "name": "Palantir", "sectorId": "ai-application", "oneLineSummary": "정부·기업 대상 AIP 플랫폼. 온톨로지 기반 엔터프라이즈 AI.", "tags": ["#엔터프라이즈"] },
+    { "ticker": "CRM", "name": "Salesforce", "sectorId": "ai-application", "oneLineSummary": "Agentforce로 SaaS에 AI 에이전트 통합 시도.", "tags": ["#SaaS", "#에이전트"] },
+    { "ticker": "NOW", "name": "ServiceNow", "sectorId": "ai-application", "oneLineSummary": "엔터프라이즈 워크플로우에 생성형 AI 결합.", "tags": ["#SaaS"] },
+    { "ticker": "ADBE", "name": "Adobe", "sectorId": "ai-application", "oneLineSummary": "Firefly로 크리에이티브 AI. 구독 모델에 통합.", "tags": ["#크리에이티브"] },
+    { "ticker": "DUOL", "name": "Duolingo", "sectorId": "ai-application", "oneLineSummary": "AI 튜터 기능 도입한 소비자 AI 활용 사례.", "tags": ["#소비자AI"] },
+
+    { "ticker": "SNOW", "name": "Snowflake", "sectorId": "data-observability", "oneLineSummary": "데이터 클라우드. AI 워크로드를 위한 데이터 통합 레이어.", "tags": ["#데이터플랫폼"] },
+    { "ticker": "DDOG", "name": "Datadog", "sectorId": "data-observability", "oneLineSummary": "관측·모니터링. LLM 관측 기능 추가 중.", "tags": ["#관측"] },
+    { "ticker": "MDB", "name": "MongoDB", "sectorId": "data-observability", "oneLineSummary": "벡터 검색 통합으로 AI 앱 백엔드 포지셔닝.", "tags": ["#벡터DB"] },
+    { "ticker": "CFLT", "name": "Confluent", "sectorId": "data-observability", "oneLineSummary": "실시간 데이터 스트리밍. AI 실시간 추론 데이터 파이프.", "tags": ["#스트리밍"] },
+
+    { "ticker": "VRT", "name": "Vertiv Holdings", "sectorId": "power-infra", "oneLineSummary": "데이터센터 전력·냉각 솔루션. AI 데이터센터 빌드아웃 직접 수혜.", "tags": ["#냉각", "#전력"] },
+    { "ticker": "ETN", "name": "Eaton", "sectorId": "power-infra", "oneLineSummary": "전력관리 — 데이터센터 전기설비 핵심 공급사.", "tags": ["#전력"] },
+    { "ticker": "CEG", "name": "Constellation Energy", "sectorId": "power-infra", "oneLineSummary": "원자력 발전 — 빅테크 AI 데이터센터 PPA 체결 본격화.", "tags": ["#원자력", "#PPA"] },
+    { "ticker": "GEV", "name": "GE Vernova", "sectorId": "power-infra", "oneLineSummary": "가스터빈·송전 — AI 전력 수요 폭증의 그리드 측 수혜.", "tags": ["#전력설비"] },
+
+    { "ticker": "TSLA", "name": "Tesla", "sectorId": "robotics-physical", "oneLineSummary": "FSD·옵티머스로 피지컬 AI 풀스택 시도.", "tags": ["#자율주행", "#휴머노이드"] },
+    { "ticker": "ISRG", "name": "Intuitive Surgical", "sectorId": "robotics-physical", "oneLineSummary": "수술 로봇 — AI 보조 수술의 선도 기업.", "tags": ["#의료로봇"] },
+    { "ticker": "SYM", "name": "Symbotic", "sectorId": "robotics-physical", "oneLineSummary": "AI 기반 물류창고 자동화 로봇.", "tags": ["#물류로봇"] },
+
+    { "ticker": "CRWD", "name": "CrowdStrike", "sectorId": "cybersecurity", "oneLineSummary": "AI 기반 엔드포인트 보안. Charlotte AI 어시스턴트.", "tags": ["#엔드포인트"] },
+    { "ticker": "PANW", "name": "Palo Alto Networks", "sectorId": "cybersecurity", "oneLineSummary": "통합 보안 플랫폼. AI 보안(Precision AI) 푸시.", "tags": ["#네트워크보안"] },
+    { "ticker": "ZS", "name": "Zscaler", "sectorId": "cybersecurity", "oneLineSummary": "Zero Trust 클라우드 보안 — AI 트래픽 보호 수요 증가.", "tags": ["#ZeroTrust"] }
+  ]
+}

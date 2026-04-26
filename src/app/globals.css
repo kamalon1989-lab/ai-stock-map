@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  background: #0b0d12;
+  color: #e6e8ee;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* 부드러운 페이드인 (모달/토스트용) */
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+.animate-in.fade-in { animation: fadeIn .15s ease-out; }
+
+/* 스크롤바 살짝 정돈 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+.tiptap {
+  outline: none;
+  min-height: 300px;
+}
+.tiptap p { margin: 0.4rem 0; }
+.tiptap h1 { font-size: 1.6rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+.tiptap h2 { font-size: 1.3rem; font-weight: 600; margin: 0.9rem 0 0.4rem; }
+.tiptap ul, .tiptap ol { padding-left: 1.4rem; }
+.tiptap blockquote { border-left: 3px solid #475569; padding-left: 0.8rem; color: #94a3b8; }
+.tiptap code { background: #1e293b; padding: 0.1rem 0.3rem; border-radius: 4px; }

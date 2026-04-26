@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 본인만 쓰기. 읽기는 본인 + public:true 인 회사 문서만 (포트폴리오 연동 대비)
+    match /users/{uid}/{document=**} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /users/{uid}/companies/{ticker} {
+      allow read: if resource.data.public == true;
+    }
+  }
+}
