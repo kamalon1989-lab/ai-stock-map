@@ -6,8 +6,8 @@ import { ToastProvider } from "@/components/Toast";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 
 export const metadata: Metadata = {
-  title: "AI Stock Map",
-  description: "내 AI 종목 노트북 — AI 생태계 맵 + 회사별 자유 블록 노트",
+  title: "AI Map Thesis OS",
+  description: "AI value chain map with thesis snapshots and daily trading checks.",
 };
 
 export const viewport: Viewport = {
@@ -16,7 +16,6 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-// SSR 깜빡임 방지 — 페이지 렌더 전에 저장된 테마 적용
 const themeInitScript = `
 (function() {
   try {
