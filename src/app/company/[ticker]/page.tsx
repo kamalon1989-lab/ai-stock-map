@@ -564,6 +564,10 @@ function normalizeRiskRows(value: unknown): Risk[] {
     });
 }
 
+function hasValuationValue(value: unknown) {
+  return value !== null && value !== undefined && value !== "";
+}
+
 function latestByDate<T extends { reportDate?: string; noteDate?: string; checkDate?: string }>(items: T[]) {
   return [...items].sort((a, b) =>
     String(b.reportDate || b.noteDate || b.checkDate || "").localeCompare(String(a.reportDate || a.noteDate || a.checkDate || ""))
@@ -965,7 +969,24 @@ export default function CompanyPage() {
 
       setMarketData(data);
 
-      const nextValuation = data.valuation ? { ...valuation, ...data.valuation } : valuation;
+      const apiValuation = data.valuation ?? {};
+      const keepManual = <K extends keyof Valuation>(key: K) =>
+        hasValuationValue(valuation[key]) ? valuation[key] : apiValuation[key];
+      const nextValuation: Valuation = {
+        ...valuation,
+        currentPrice: apiValuation.currentPrice ?? valuation.currentPrice,
+        eps: apiValuation.eps ?? valuation.eps,
+        forwardEps: apiValuation.forwardEps ?? valuation.forwardEps,
+        per: apiValuation.per ?? valuation.per,
+        forwardPer: apiValuation.forwardPer ?? valuation.forwardPer,
+        fairPer: apiValuation.fairPer ?? valuation.fairPer,
+        bearTarget: keepManual("bearTarget"),
+        baseTarget: keepManual("baseTarget"),
+        bullTarget: keepManual("bullTarget"),
+        targetPrice: keepManual("targetPrice"),
+        upside: keepManual("upside"),
+        view: keepManual("view"),
+      };
       const nextCatalysts = [...(detail.catalysts ?? [])];
       if (data.earningsCatalyst?.date) {
         const exists = nextCatalysts.some((item) => item.date === data.earningsCatalyst?.date && item.event === data.earningsCatalyst?.event);
@@ -989,7 +1010,7 @@ export default function CompanyPage() {
         quarterlyData: mergedQuarterly,
       });
 
-      setMarketMessage("시장 데이터 반영 완료: 현재가/PER/EPS/목표가, 실적 일정, 최근 분기 매출을 업데이트했어요.");
+      setMarketMessage("시장 데이터 반영 완료: 현재가/PER/EPS/Forward PER만 갱신하고, 직접 입력한 목표주가/업사이드/판단 메모는 보존했어요.");
     } catch (error) {
       setMarketMessage(error instanceof Error ? error.message : "시장 데이터 동기화에 실패했어요.");
     } finally {

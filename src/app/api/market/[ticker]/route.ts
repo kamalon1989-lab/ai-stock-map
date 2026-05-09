@@ -20,6 +20,11 @@ function pct(value: number | null) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function asNumber(value: unknown) {
+  const parsed = Number(value);
+  return value === null || value === undefined || Number.isNaN(parsed) ? null : parsed;
+}
+
 function toDate(seconds: number | null) {
   if (!seconds) return "";
   return new Date(seconds * 1000).toISOString().slice(0, 10);
@@ -76,6 +81,31 @@ async function fetchYahooQuote(ticker: string) {
   } catch {
     return null;
   }
+}
+
+async function fetchFinnhub(path: string, params: Record<string, string>) {
+  const token = process.env.FINNHUB_API_KEY;
+  if (!token) return null;
+
+  try {
+    const url = new URL(`https://finnhub.io/api/v1${path}`);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    url.searchParams.set("token", token);
+    return await fetchJson(url.toString());
+  } catch {
+    return null;
+  }
+}
+
+function metricValue(metric: Record<string, unknown> | undefined, keys: string[]) {
+  if (!metric) return null;
+  for (const key of keys) {
+    const value = asNumber(metric[key]);
+    if (value !== null) return value;
+  }
+  return null;
 }
 
 function unitItems(facts: any, tag: string) {
@@ -205,45 +235,61 @@ export async function GET(_: Request, { params }: { params: { ticker: string } }
   const ticker = params.ticker.toUpperCase();
 
   try {
-    const [chart, sec, quote] = await Promise.all([
+    const [chart, sec, quote, finnhubQuote, finnhubMetric, finnhubTarget, finnhubEarnings] = await Promise.all([
       fetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d`),
       fetchSecLinks(ticker),
       fetchYahooQuote(ticker),
+      fetchFinnhub("/quote", { symbol: ticker }),
+      fetchFinnhub("/stock/metric", { symbol: ticker, metric: "all" }),
+      fetchFinnhub("/stock/price-target", { symbol: ticker }),
+      fetchFinnhub("/calendar/earnings", { symbol: ticker, from: new Date().toISOString().slice(0, 10), to: new Date(Date.now() + 183 * 86400000).toISOString().slice(0, 10) }),
     ]);
 
     const facts = sec?.cik ? await fetchSecCompanyFacts(sec.cik) : null;
     const chartMetrics = buildChartMetrics(chart);
     const chartMeta = chart?.chart?.result?.[0]?.meta ?? {};
-    const currentPrice = quote?.regularMarketPrice ?? chartMetrics.currentPrice ?? chartMeta.regularMarketPrice ?? null;
-    const eps = quote?.epsTrailingTwelveMonths ?? annualValue(facts, "EarningsPerShareDiluted");
+    const metric = finnhubMetric?.metric as Record<string, unknown> | undefined;
+    const currentPrice = asNumber(finnhubQuote?.c) ?? quote?.regularMarketPrice ?? chartMetrics.currentPrice ?? chartMeta.regularMarketPrice ?? null;
+    const eps = metricValue(metric, ["epsInclExtraItemsTTM", "epsExclExtraItemsTTM", "epsNormalizedAnnual"]) ?? quote?.epsTrailingTwelveMonths ?? annualValue(facts, "EarningsPerShareDiluted");
     const shares = latestValue(facts, "EntityCommonStockSharesOutstanding");
-    const marketCap = quote?.marketCap ?? (currentPrice && shares ? currentPrice * shares : null);
-    const per = quote?.trailingPE ?? (currentPrice && eps ? currentPrice / eps : null);
-    const targetPrice = null;
+    const marketCapMillions = metricValue(metric, ["marketCapitalization"]);
+    const marketCap = marketCapMillions ? marketCapMillions * 1_000_000 : quote?.marketCap ?? (currentPrice && shares ? currentPrice * shares : null);
+    const per = metricValue(metric, ["peBasicExclExtraTTM", "peInclExtraTTM", "peNormalizedAnnual"]) ?? quote?.trailingPE ?? (currentPrice && eps ? currentPrice / eps : null);
+    const forwardPer = metricValue(metric, ["forwardPE", "peForward"]);
+    const forwardEps = quote?.epsForward ?? (currentPrice && forwardPer ? currentPrice / forwardPer : null);
+    const targetPrice = asNumber(finnhubTarget?.targetMean) ?? asNumber(finnhubTarget?.targetMedian);
     const upside = currentPrice && targetPrice ? ((targetPrice - currentPrice) / currentPrice) * 100 : null;
+    const earningsRow = Array.isArray(finnhubEarnings?.earningsCalendar) ? finnhubEarnings.earningsCalendar[0] : null;
 
     return NextResponse.json({
       ticker,
-      source: "Yahoo chart + SEC public data",
+      source: process.env.FINNHUB_API_KEY ? "Finnhub + Yahoo chart + SEC public data" : "Yahoo chart + SEC public data",
       fetchedAt: new Date().toISOString(),
       companyName: sec?.companyName ?? ticker,
       valuation: {
         currentPrice,
         eps,
-        forwardEps: quote?.epsForward ?? null,
+        forwardEps: forwardEps === null ? null : Number(forwardEps.toFixed(2)),
         per: per === null ? null : Number(per.toFixed(1)),
-        forwardPer: quote?.forwardPE ?? null,
+        forwardPer: forwardPer ?? quote?.forwardPE ?? null,
         fairPer: null,
-        bearTarget: null,
+        bearTarget: asNumber(finnhubTarget?.targetLow),
         baseTarget: targetPrice,
-        bullTarget: null,
+        bullTarget: asNumber(finnhubTarget?.targetHigh),
         targetPrice,
         upside: pct(upside),
         view: [
-          "API 자동 입력: 현재가와 최근 연간 EPS 기반 PER을 채웠습니다.",
-          "애널리스트 목표주가/Forward EPS는 키 없는 공개 API만으로는 안정적으로 제공되지 않아 비워둡니다.",
+          process.env.FINNHUB_API_KEY
+            ? "API 자동 입력: Finnhub 기준 현재가, EPS/PER, 애널리스트 목표주가를 채웠습니다."
+            : "API 자동 입력: 현재가와 최근 연간 EPS 기반 PER을 채웠습니다.",
+          process.env.FINNHUB_API_KEY
+            ? `애널리스트 평균 목표가는 ${targetPrice ? `$${targetPrice}` : "-"}이고 현재가 대비 업사이드는 ${pct(upside) || "-"}입니다.`
+            : "애널리스트 목표주가/Forward EPS는 키 없는 공개 API만으로는 안정적으로 제공되지 않아 비워둡니다.",
+          process.env.FINNHUB_API_KEY && !targetPrice
+            ? "현재 키/플랜에서 Finnhub 목표주가 응답이 비어 있어 Bear/Base/Bull 목표가는 자동 입력하지 않았습니다."
+            : "",
           "목표주가는 상세 페이지의 밸류에이션 탭에서 직접 판단해 채워주세요.",
-        ].join("\n"),
+        ].filter(Boolean).join("\n"),
       },
       marketSnapshot: {
         marketCap,
@@ -258,7 +304,15 @@ export async function GET(_: Request, { params }: { params: { ticker: string } }
         distanceFromLow52w: chartMetrics.distanceFromLow52w ?? null,
         above200d: chartMetrics.above200d ?? null,
       },
-      earningsCatalyst: null,
+      earningsCatalyst: earningsRow?.date
+        ? {
+            date: String(earningsRow.date),
+            event: "다음 실적 발표 예정",
+            category: "earnings",
+            impact: "high",
+            notes: `Finnhub 자동 입력: 예상 EPS ${earningsRow.epsEstimate ?? "-"}, 예상 매출 ${earningsRow.revenueEstimate ?? "-"}`,
+          }
+        : null,
       analyst: {
         recommendationMean: null,
         recommendationKey: "",
