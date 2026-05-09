@@ -114,6 +114,41 @@ type CompanyDetail = {
   quarterlyData?: QuarterlyDatum[];
   catalysts?: Catalyst[];
   risks?: Risk[];
+  marketData?: MarketData;
+};
+
+type MarketData = {
+  source?: string;
+  fetchedAt?: string;
+  companyName?: string;
+  valuation?: Valuation;
+  marketSnapshot?: {
+    marketCap?: number | null;
+    currency?: string;
+    regularMarketPrice?: number | null;
+    fiftyTwoWeekHigh?: number | null;
+    fiftyTwoWeekLow?: number | null;
+    movingAverage200d?: number | null;
+    return3m?: number | null;
+    return1y?: number | null;
+    distanceFromHigh52w?: number | null;
+    distanceFromLow52w?: number | null;
+    above200d?: boolean | null;
+  };
+  earningsCatalyst?: Omit<Catalyst, "id"> | null;
+  analyst?: {
+    recommendationMean?: number | null;
+    recommendationKey?: string;
+    numberOfAnalystOpinions?: number | null;
+  };
+  quarterlyData?: Omit<QuarterlyDatum, "id">[];
+  sec?: {
+    cik: string;
+    companyName: string;
+    submissionsUrl: string;
+    companyFactsUrl: string;
+    secSearchUrl: string;
+  } | null;
 };
 
 type AppState = {
@@ -146,6 +181,81 @@ const emptyState: AppState = {
 };
 
 const prompts = {
+  bulk: `이 종목의 상세 리서치를 한 번에 업데이트할 수 있게 정리해줘.
+
+대상 종목: 이 종목
+
+목표:
+- AI 밸류체인 포지션
+- 밸류에이션과 목표주가
+- 최근 분기 성장률/가이던스
+- 향후 6개월 Catalyst
+- 핵심 리스크와 쉬운 대응 계획
+
+작성 원칙:
+1. 모르는 수치는 억지로 추정하지 말고 null 또는 빈 문자열로 둬.
+2. 금융 용어는 초보 투자자도 이해할 수 있게 쉽게 써줘.
+3. 단기 매수가/손절가보다 기업가치, 성장률, 가이던스, 투자 가설 변화에 집중해줘.
+4. 답변 마지막에는 아래 JSON만 별도 코드블록으로 줘.
+
+\`\`\`json
+{
+  "valueChainPosition": {
+    "layer": "광통신",
+    "aiRevenueShare": 65,
+    "aiRevenueTrend": "expanding",
+    "exposureType": "direct",
+    "replaceability": "이 회사가 빠지면 누가 대체할 수 있는지 쉽게 설명",
+    "competitors": ["AVGO", "MRVL"]
+  },
+  "valuation": {
+    "currentPrice": 75,
+    "eps": 1.8,
+    "forwardEps": 2.6,
+    "per": 41.7,
+    "forwardPer": 28.8,
+    "fairPer": 32,
+    "bearTarget": 68,
+    "baseTarget": 83,
+    "bullTarget": 100,
+    "targetPrice": 83,
+    "upside": "+10%",
+    "view": "현재 주가가 비싼지 싼지, 왜 그렇게 보는지 쉽게 설명"
+  },
+  "quarterlyData": [
+    {
+      "quarter": "FY26 Q1",
+      "reportDate": "2026-05-30",
+      "dataCenterRevenue": 1.5,
+      "revenueYoY": 35,
+      "revenueQoQ": 8,
+      "nextQuarterGuidance": "다음 분기 가이던스 요약",
+      "keyCustomers": "MSFT 25%, META 20%",
+      "notes": "이번 분기에서 가장 중요한 한 줄"
+    }
+  ],
+  "catalysts": [
+    {
+      "date": "2026-06-10",
+      "event": "Q2 실적 발표",
+      "category": "earnings",
+      "impact": "high",
+      "notes": "확인할 포인트"
+    }
+  ],
+  "risks": [
+    {
+      "name": "AI 매출 성장 둔화",
+      "triggerCondition": "이 문제가 실제로 커졌다고 볼 신호",
+      "scenarios": {
+        "bear": { "price": 55, "action": "sell", "memo": "나쁜 경우 대응을 쉽게 설명" },
+        "base": { "price": 75, "action": "hold", "memo": "보통 경우 대응을 쉽게 설명" },
+        "bull": { "price": 100, "action": "buy_more", "memo": "좋은 경우 대응을 쉽게 설명" }
+      }
+    }
+  ]
+}
+\`\`\``,
   position: `이 종목의 AI 밸류체인 포지션만 분석해줘.
 
 필요 항목:
@@ -288,6 +398,15 @@ function multiple(value?: number | null) {
   return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })}x`;
 }
 
+function compactMoney(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  const abs = Math.abs(Number(value));
+  if (abs >= 1_000_000_000_000) return `$${(Number(value) / 1_000_000_000_000).toFixed(2)}T`;
+  if (abs >= 1_000_000_000) return `$${(Number(value) / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `$${(Number(value) / 1_000_000).toFixed(2)}M`;
+  return money(value);
+}
+
 function saveState(next: AppState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
@@ -311,6 +430,15 @@ function cleanMarkdown(text: string) {
     .trim();
 }
 
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function extractJson(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const raw = fenced?.[1] ?? text;
@@ -328,6 +456,114 @@ function normalizeAction(value: unknown): ScenarioAction {
   return value === "sell" || value === "buy_more" || value === "hold" ? value : "hold";
 }
 
+function toRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" ? value as Record<string, any> : {};
+}
+
+function normalizePositionPayload(value: unknown): ValueChainPosition | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = toRecord(value);
+  const trend = String(record.aiRevenueTrend ?? "expanding");
+  const exposure = String(record.exposureType ?? "direct");
+  return {
+    layer: String(record.layer ?? record.valueChainLayer ?? "미분류"),
+    aiRevenueShare: num(record.aiRevenueShare),
+    aiRevenueTrend: trend === "stable" || trend === "shrinking" ? trend : "expanding",
+    exposureType: exposure === "indirect" || exposure === "infrastructure" ? exposure : "direct",
+    replaceability: String(record.replaceability ?? ""),
+    competitors: Array.isArray(record.competitors) ? record.competitors.map((item: unknown) => asTicker(item)).filter(Boolean) : [],
+  };
+}
+
+function normalizeValuationPayload(value: unknown): Valuation | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = toRecord(value);
+  return {
+    currentPrice: num(record.currentPrice),
+    eps: num(record.eps),
+    forwardEps: num(record.forwardEps),
+    per: num(record.per),
+    forwardPer: num(record.forwardPer),
+    fairPer: num(record.fairPer),
+    bearTarget: num(record.bearTarget),
+    baseTarget: num(record.baseTarget),
+    bullTarget: num(record.bullTarget),
+    targetPrice: num(record.targetPrice),
+    upside: String(record.upside ?? ""),
+    view: String(record.view ?? ""),
+  };
+}
+
+function normalizeQuarterlyRows(value: unknown): QuarterlyDatum[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const record = toRecord(item);
+      return {
+        id: String(record.id ?? uid("q")),
+        quarter: String(record.quarter ?? ""),
+        reportDate: String(record.reportDate ?? ""),
+        dataCenterRevenue: num(record.dataCenterRevenue),
+        revenueYoY: num(record.revenueYoY),
+        revenueQoQ: num(record.revenueQoQ),
+        nextQuarterGuidance: String(record.nextQuarterGuidance ?? ""),
+        keyCustomers: String(record.keyCustomers ?? ""),
+        notes: String(record.notes ?? ""),
+      };
+    });
+}
+
+function normalizeCatalystRows(value: unknown): Catalyst[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const record = toRecord(item);
+      const category = String(record.category ?? "other");
+      const impact = String(record.impact ?? "medium");
+      return {
+        id: String(record.id ?? uid("cat")),
+        date: String(record.date ?? ""),
+        event: String(record.event ?? ""),
+        category: ["earnings", "product", "conference", "policy", "customer_earnings", "other"].includes(category) ? category as Catalyst["category"] : "other",
+        impact: ["high", "medium", "low"].includes(impact) ? impact as Catalyst["impact"] : "medium",
+        notes: String(record.notes ?? ""),
+      };
+    });
+}
+
+function normalizeRiskRows(value: unknown): Risk[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const record = toRecord(item);
+      return {
+        id: String(record.id ?? uid("risk")),
+        name: String(record.name ?? record.text ?? ""),
+        triggerCondition: String(record.triggerCondition ?? ""),
+        scenarios: {
+          bear: {
+            price: num(record.scenarios?.bear?.price),
+            action: normalizeAction(record.scenarios?.bear?.action),
+            memo: String(record.scenarios?.bear?.memo ?? ""),
+          },
+          base: {
+            price: num(record.scenarios?.base?.price),
+            action: normalizeAction(record.scenarios?.base?.action),
+            memo: String(record.scenarios?.base?.memo ?? ""),
+          },
+          bull: {
+            price: num(record.scenarios?.bull?.price),
+            action: normalizeAction(record.scenarios?.bull?.action),
+            memo: String(record.scenarios?.bull?.memo ?? ""),
+          },
+        },
+      };
+    });
+}
+
 function latestByDate<T extends { reportDate?: string; noteDate?: string; checkDate?: string }>(items: T[]) {
   return [...items].sort((a, b) =>
     String(b.reportDate || b.noteDate || b.checkDate || "").localeCompare(String(a.reportDate || a.noteDate || a.checkDate || ""))
@@ -339,10 +575,13 @@ export default function CompanyPage() {
   const ticker = asTicker(params.ticker);
   const [state, setState] = useState<AppState>(emptyState);
   const [hydrated, setHydrated] = useState(false);
-  const [modal, setModal] = useState<null | "position" | "valuation" | "quarterly" | "catalyst" | "risk" | "research">(null);
+  const [modal, setModal] = useState<null | "bulk" | "position" | "valuation" | "quarterly" | "catalyst" | "risk" | "research">(null);
   const [editingNote, setEditingNote] = useState<AiNote | null>(null);
   const [jsonPaste, setJsonPaste] = useState("");
   const [jsonMessage, setJsonMessage] = useState("");
+  const [marketData, setMarketData] = useState<MarketData | null>(null);
+  const [marketMessage, setMarketMessage] = useState("");
+  const [marketLoading, setMarketLoading] = useState(false);
 
   const [positionDraft, setPositionDraft] = useState<ValueChainPosition>({
     layer: "미분류",
@@ -426,6 +665,7 @@ export default function CompanyPage() {
   const quarterly = [...(detail.quarterlyData ?? [])].sort((a, b) => b.reportDate.localeCompare(a.reportDate));
   const catalysts = [...(detail.catalysts ?? [])].sort((a, b) => a.date.localeCompare(b.date));
   const risks = detail.risks?.length ? detail.risks : latestThesis?.risks ?? [];
+  const syncedMarketData = marketData ?? detail.marketData ?? null;
 
   const updateDetail = (patch: Partial<CompanyDetail>) => {
     setState((current) => {
@@ -450,6 +690,50 @@ export default function CompanyPage() {
     if (!modal) return;
     try {
       const parsed = extractJson(jsonPaste);
+
+      if (modal === "bulk") {
+        const position = normalizePositionPayload(parsed.valueChainPosition ?? parsed.position);
+        const nextValuation = normalizeValuationPayload(parsed.valuation);
+        const nextQuarterly = normalizeQuarterlyRows(parsed.quarterlyData ?? parsed.quarters);
+        const nextCatalysts = normalizeCatalystRows(parsed.catalysts);
+        const nextRisks = normalizeRiskRows(parsed.risks);
+
+        const patch: Partial<CompanyDetail> = {};
+        if (position) patch.valueChainPosition = position;
+        if (nextValuation) patch.valuation = nextValuation;
+        if (nextQuarterly.length) patch.quarterlyData = [...nextQuarterly, ...(detail.quarterlyData ?? [])];
+        if (nextCatalysts.length) patch.catalysts = [...(detail.catalysts ?? []), ...nextCatalysts];
+        if (nextRisks.length) patch.risks = [...(detail.risks ?? []), ...nextRisks];
+
+        updateDetail(patch);
+
+        if (position) {
+          setState((current) => {
+            const existing = current.profiles[ticker];
+            const next = {
+              ...current,
+              profiles: {
+                ...current.profiles,
+                [ticker]: {
+                  ...(existing ?? {}),
+                  ticker,
+                  companyName: existing?.companyName ?? latestThesis?.companyName ?? ticker,
+                  sector: position.layer,
+                  aiValueChain: [position.layer],
+                  oneLineThesis: existing?.oneLineThesis ?? latestThesis?.oneLineThesis,
+                  businessModel: existing?.businessModel ?? latestThesis?.businessModel,
+                  status: existing?.status ?? "검토",
+                  updatedAt: today(),
+                },
+              },
+            };
+            return saveState(next);
+          });
+        }
+
+        setJsonMessage(`종합 업데이트 완료: 포지션 ${position ? 1 : 0}개, 목표주가 ${nextValuation ? 1 : 0}개, 분기 ${nextQuarterly.length}개, Catalyst ${nextCatalysts.length}개, 리스크 ${nextRisks.length}개`);
+        return;
+      }
 
       if (modal === "position") {
         setPositionDraft({
@@ -671,6 +955,48 @@ export default function CompanyPage() {
     setState((current) => saveState({ ...current, aiNotes: current.aiNotes.filter((item) => item.id !== id) }));
   };
 
+  const syncMarketData = async () => {
+    setMarketLoading(true);
+    setMarketMessage("시장 데이터를 가져오는 중...");
+    try {
+      const response = await fetch(`/api/market/${ticker}`);
+      const data = await response.json() as MarketData & { error?: string };
+      if (!response.ok) throw new Error(data.error || "시장 데이터를 가져오지 못했어요.");
+
+      setMarketData(data);
+
+      const nextValuation = data.valuation ? { ...valuation, ...data.valuation } : valuation;
+      const nextCatalysts = [...(detail.catalysts ?? [])];
+      if (data.earningsCatalyst?.date) {
+        const exists = nextCatalysts.some((item) => item.date === data.earningsCatalyst?.date && item.event === data.earningsCatalyst?.event);
+        if (!exists) nextCatalysts.unshift({ ...data.earningsCatalyst, id: uid("cat") } as Catalyst);
+      }
+
+      const nextQuarterRows: QuarterlyDatum[] = (data.quarterlyData ?? []).map((row) => ({
+        ...row,
+        id: uid("q"),
+      }));
+      const existingQuarterKeys = new Set((detail.quarterlyData ?? []).map((row) => `${row.quarter}-${row.reportDate}`));
+      const mergedQuarterly = [
+        ...nextQuarterRows.filter((row) => !existingQuarterKeys.has(`${row.quarter}-${row.reportDate}`)),
+        ...(detail.quarterlyData ?? []),
+      ];
+
+      updateDetail({
+        marketData: data,
+        valuation: nextValuation,
+        catalysts: nextCatalysts,
+        quarterlyData: mergedQuarterly,
+      });
+
+      setMarketMessage("시장 데이터 반영 완료: 현재가/PER/EPS/목표가, 실적 일정, 최근 분기 매출을 업데이트했어요.");
+    } catch (error) {
+      setMarketMessage(error instanceof Error ? error.message : "시장 데이터 동기화에 실패했어요.");
+    } finally {
+      setMarketLoading(false);
+    }
+  };
+
   const exportResearchFile = () => {
     const markdown = [
       `# ${ticker} AI Thesis Workspace`,
@@ -710,6 +1036,80 @@ export default function CompanyPage() {
     URL.revokeObjectURL(url);
   };
 
+  const exportHtmlReport = () => {
+    const title = profile?.companyName || latestThesis?.companyName || ticker;
+    const thesisText = latestThesis?.finalView || latestThesis?.oneLineThesis || profile?.oneLineThesis || "";
+    const businessText = latestThesis?.businessModel || profile?.businessModel || "";
+    const position = detail.valueChainPosition;
+    const html = `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(ticker)} AI thesis report</title>
+<style>
+body{margin:0;background:#0b0d12;color:#e6e8ee;font-family:Arial,sans-serif;line-height:1.6}
+main{max-width:1040px;margin:0 auto;padding:32px 18px}
+section{border:1px solid #1e293b;border-radius:8px;padding:18px;margin:14px 0;background:#111827}
+h1,h2,h3{margin:0 0 10px}.muted{color:#94a3b8}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#1e293b;margin:3px;color:#cbd5e1}
+.metric{border:1px solid #243044;border-radius:8px;background:#0f172a;padding:12px}.metric b{font-size:20px}
+table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #1e293b;padding:8px;text-align:left;vertical-align:top}
+pre{white-space:pre-wrap;font-family:inherit}.note{border-left:2px solid #334155;padding-left:12px;margin:12px 0}
+</style>
+</head>
+<body><main>
+<section>
+<p class="muted">Generated ${escapeHtml(today())}</p>
+<h1>${escapeHtml(ticker)} / ${escapeHtml(title)}</h1>
+<p>${escapeHtml(thesisText)}</p>
+<span class="pill">${escapeHtml(position?.layer ?? layer)}</span>
+<span class="pill">${escapeHtml(pct(position?.aiRevenueShare))} AI 매출</span>
+<span class="pill">${escapeHtml(trendLabel(position?.aiRevenueTrend))}</span>
+<span class="pill">${escapeHtml(exposureLabel(position?.exposureType))}</span>
+</section>
+<section><h2>회사 정체성</h2><pre>${escapeHtml(businessText)}</pre></section>
+<section><h2>투자 가설</h2><pre>${escapeHtml(thesisText)}</pre></section>
+<section>
+<h2>시장 데이터 자동 동기화</h2>
+<div class="grid">
+<div class="metric">시가총액<br><b>${escapeHtml(compactMoney(syncedMarketData?.marketSnapshot?.marketCap))}</b></div>
+<div class="metric">52주 고점<br><b>${escapeHtml(money(syncedMarketData?.marketSnapshot?.fiftyTwoWeekHigh))}</b></div>
+<div class="metric">52주 저점<br><b>${escapeHtml(money(syncedMarketData?.marketSnapshot?.fiftyTwoWeekLow))}</b></div>
+<div class="metric">200일선<br><b>${escapeHtml(money(syncedMarketData?.marketSnapshot?.movingAverage200d))}</b></div>
+<div class="metric">3개월 수익률<br><b>${escapeHtml(pct(syncedMarketData?.marketSnapshot?.return3m))}</b></div>
+<div class="metric">1년 수익률<br><b>${escapeHtml(pct(syncedMarketData?.marketSnapshot?.return1y))}</b></div>
+</div>
+<p class="muted">${escapeHtml(syncedMarketData?.source || "시장 데이터 미동기화")}</p>
+</section>
+<section><h2>AI 밸류체인 포지션</h2><pre>${escapeHtml(position?.replaceability || "")}</pre><p>${(position?.competitors ?? []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("")}</p></section>
+<section>
+<h2>밸류에이션과 목표주가</h2>
+<div class="grid">
+<div class="metric">현재가<br><b>${escapeHtml(money(valuation.currentPrice ?? latestThesis?.currentPrice))}</b></div>
+<div class="metric">EPS<br><b>${escapeHtml(formatNumber(valuation.eps))}</b></div>
+<div class="metric">Forward EPS<br><b>${escapeHtml(formatNumber(valuation.forwardEps))}</b></div>
+<div class="metric">PER<br><b>${escapeHtml(multiple(valuation.per))}</b></div>
+<div class="metric">Forward PER<br><b>${escapeHtml(multiple(valuation.forwardPer))}</b></div>
+<div class="metric">Base 목표<br><b>${escapeHtml(money(valuation.baseTarget ?? valuation.targetPrice))}</b></div>
+</div>
+<pre>${escapeHtml(valuation.view || "")}</pre>
+</section>
+<section><h2>성장률 & CapEx 트래커</h2><table><thead><tr><th>분기</th><th>발표일</th><th>DC 매출</th><th>YoY</th><th>QoQ</th><th>가이던스</th><th>핵심 고객</th><th>메모</th></tr></thead><tbody>${quarterly.map((row) => `<tr><td>${escapeHtml(row.quarter)}</td><td>${escapeHtml(row.reportDate)}</td><td>${escapeHtml(row.dataCenterRevenue ?? "-")}</td><td>${escapeHtml(pct(row.revenueYoY))}</td><td>${escapeHtml(pct(row.revenueQoQ))}</td><td>${escapeHtml(row.nextQuarterGuidance)}</td><td>${escapeHtml(row.keyCustomers)}</td><td>${escapeHtml(row.notes)}</td></tr>`).join("")}</tbody></table></section>
+<section><h2>향후 6개월 Catalyst</h2><table><thead><tr><th>날짜</th><th>이벤트</th><th>분류</th><th>중요도</th><th>메모</th></tr></thead><tbody>${catalysts.map((item) => `<tr><td>${escapeHtml(item.date)}</td><td>${escapeHtml(item.event)}</td><td>${escapeHtml(categoryLabel(item.category))}</td><td>${escapeHtml(item.impact)}</td><td>${escapeHtml(item.notes)}</td></tr>`).join("")}</tbody></table></section>
+<section><h2>위험요인별 대응 계획</h2>${risks.map((risk) => `<div class="note"><h3>${escapeHtml(risk.name || risk.text || "위험요인")}</h3><p class="muted">${escapeHtml(risk.triggerCondition || risk.response || "")}</p><pre>${escapeHtml(JSON.stringify(risk.scenarios ?? {}, null, 2))}</pre></div>`).join("")}</section>
+<section><h2>리서치 업데이트</h2>${notes.map((note) => `<div class="note"><h3>${escapeHtml(note.noteDate)} ${escapeHtml(cleanMarkdown(note.title))}</h3><pre>${escapeHtml(cleanMarkdown(note.body))}</pre></div>`).join("")}</section>
+</main></body></html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${ticker}_report_${today()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0d12] text-slate-100">
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
@@ -718,6 +1118,9 @@ export default function CompanyPage() {
             ← 맵으로
           </Link>
           <div className="flex items-center gap-2">
+            <Button onClick={syncMarketData}>{marketLoading ? "동기화 중..." : "시장 데이터 동기화"}</Button>
+            <Button onClick={() => openModal("bulk")} tone="emerald">종합 업데이트</Button>
+            <Button onClick={exportHtmlReport} tone="emerald">리포트 HTML</Button>
             <Button onClick={exportResearchFile}>AI 파일 내보내기</Button>
           </div>
         </div>
@@ -747,6 +1150,31 @@ export default function CompanyPage() {
             {latestThesis?.finalView || latestThesis?.oneLineThesis || profile?.oneLineThesis || "아직 투자 가설이 정리되지 않았습니다."}
           </InfoCard>
         </section>
+
+        <Section title="시장 데이터 자동 동기화" onAdd={syncMarketData}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <Metric label="현재가" value={money(syncedMarketData?.marketSnapshot?.regularMarketPrice ?? valuation.currentPrice ?? latestThesis?.currentPrice)} />
+            <Metric label="시가총액" value={compactMoney(syncedMarketData?.marketSnapshot?.marketCap)} />
+            <Metric label="52주 고점" value={money(syncedMarketData?.marketSnapshot?.fiftyTwoWeekHigh)} />
+            <Metric label="52주 저점" value={money(syncedMarketData?.marketSnapshot?.fiftyTwoWeekLow)} />
+            <Metric label="200일선" value={money(syncedMarketData?.marketSnapshot?.movingAverage200d)} />
+            <Metric label="1년 수익률" value={pct(syncedMarketData?.marketSnapshot?.return1y)} />
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="52주 고점 대비" value={pct(syncedMarketData?.marketSnapshot?.distanceFromHigh52w)} />
+            <Metric label="52주 저점 대비" value={pct(syncedMarketData?.marketSnapshot?.distanceFromLow52w)} />
+            <Metric label="3개월 수익률" value={pct(syncedMarketData?.marketSnapshot?.return3m)} />
+            <Metric label="200일선 위치" value={syncedMarketData?.marketSnapshot?.above200d === undefined || syncedMarketData?.marketSnapshot?.above200d === null ? "-" : syncedMarketData.marketSnapshot.above200d ? "위" : "아래"} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {syncedMarketData?.sec?.secSearchUrl && <a className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800" href={syncedMarketData.sec.secSearchUrl} target="_blank" rel="noreferrer">SEC 공시</a>}
+            {syncedMarketData?.sec?.companyFactsUrl && <a className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800" href={syncedMarketData.sec.companyFactsUrl} target="_blank" rel="noreferrer">SEC 재무 원자료</a>}
+            {syncedMarketData?.sec?.submissionsUrl && <a className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800" href={syncedMarketData.sec.submissionsUrl} target="_blank" rel="noreferrer">SEC 제출 원자료</a>}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            {marketMessage || "뉴스는 가져오지 않습니다. 버튼을 누르면 현재가/PER/EPS/시가총액/SEC 링크/최근 분기 전체 매출만 반영합니다. SEC 원자료 버튼은 공시 JSON 확인용입니다."}
+          </p>
+        </Section>
 
         <Section title="AI 밸류체인 포지션" onAdd={openPosition}>
           <div className={`rounded-lg border ${layerMeta.border} bg-slate-950/50 p-4`}>
@@ -793,7 +1221,7 @@ export default function CompanyPage() {
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-slate-950 text-xs text-slate-500">
                 <tr>
-                  <th className="p-3">분기</th><th>발표일</th><th>DC 매출</th><th>YoY</th><th>QoQ</th><th>가이던스</th><th>핵심 고객</th><th>메모</th><th></th>
+                  <th className="p-3">분기</th><th>발표일</th><th>매출(B$)</th><th>YoY</th><th>QoQ</th><th>가이던스</th><th>핵심 고객</th><th>메모</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -858,17 +1286,19 @@ export default function CompanyPage() {
         <Section title="리서치 업데이트" onAdd={() => { setEditingNote(null); setResearchDraft({ title: "", body: "" }); openModal("research"); }}>
           <div className="grid gap-3">
             {notes.map((note) => (
-              <article key={note.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="font-semibold">{cleanMarkdown(note.title)}</h3>
-                  <div className="flex gap-2">
+              <details key={note.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="font-semibold">{cleanMarkdown(note.title)}</h3>
                     <span className="font-mono text-xs text-slate-500">{note.noteDate}</span>
-                    <button onClick={() => { setEditingNote(note); setResearchDraft({ title: note.title, body: note.body }); openModal("research"); }} className="text-xs text-slate-400">수정</button>
-                    <button onClick={() => deleteNote(note.id)} className="text-xs text-rose-400">삭제</button>
                   </div>
-                </div>
+                </summary>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-400">{cleanMarkdown(note.body)}</p>
-              </article>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => { setEditingNote(note); setResearchDraft({ title: note.title, body: note.body }); openModal("research"); }} className="text-xs text-slate-400">수정</button>
+                  <button onClick={() => deleteNote(note.id)} className="text-xs text-rose-400">삭제</button>
+                </div>
+              </details>
             ))}
             {notes.length === 0 && <p className="text-sm text-slate-500">아직 리서치 업데이트가 없습니다.</p>}
           </div>
@@ -994,7 +1424,7 @@ function MiniCharts({ data }: { data: QuarterlyDatum[] }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3">
-        <p className="text-sm font-medium">데이터센터 매출 추이</p>
+        <p className="text-sm font-medium">매출 추이</p>
         <div className="mt-4 flex h-32 items-end gap-2">
           {[...data].reverse().map((item) => (
             <div key={item.id} className="flex flex-1 flex-col items-center gap-2">
@@ -1165,10 +1595,15 @@ function formatNumber(value?: number | null) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-function modalTitle(modal: NonNullable<ReturnType<typeof useCompanyModalType>>) {
-  return modal;
-}
-
-function useCompanyModalType(): null | "position" | "valuation" | "quarterly" | "catalyst" | "risk" | "research" {
-  return null;
+function modalTitle(modal: "bulk" | "position" | "valuation" | "quarterly" | "catalyst" | "risk" | "research") {
+  const titles = {
+    bulk: "종합 업데이트",
+    position: "AI 밸류체인 포지션",
+    valuation: "밸류에이션과 목표주가",
+    quarterly: "성장률 & CapEx 트래커",
+    catalyst: "향후 6개월 Catalyst",
+    risk: "위험요인별 대응 계획",
+    research: "리서치 업데이트",
+  };
+  return titles[modal];
 }
