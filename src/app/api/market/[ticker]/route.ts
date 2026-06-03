@@ -157,6 +157,7 @@ function buildChartMetrics(chart: any) {
   if (closes.length === 0) return {};
 
   const current = closes[closes.length - 1];
+  const previous = closes.length > 1 ? closes[closes.length - 2] : null;
   const first = closes[0];
   const threeMonthIndex = Math.max(0, closes.length - 63);
   const threeMonth = closes[threeMonthIndex];
@@ -167,6 +168,7 @@ function buildChartMetrics(chart: any) {
 
   return {
     currentPrice: current,
+    dayChangePercent: previous ? ((current - previous) / previous) * 100 : null,
     high52w,
     low52w,
     movingAverage200d: ma200,
@@ -250,6 +252,7 @@ export async function GET(_: Request, { params }: { params: { ticker: string } }
     const chartMeta = chart?.chart?.result?.[0]?.meta ?? {};
     const metric = finnhubMetric?.metric as Record<string, unknown> | undefined;
     const currentPrice = asNumber(finnhubQuote?.c) ?? quote?.regularMarketPrice ?? chartMetrics.currentPrice ?? chartMeta.regularMarketPrice ?? null;
+    const dayChangePercent = asNumber(finnhubQuote?.dp) ?? quote?.regularMarketChangePercent ?? chartMetrics.dayChangePercent ?? null;
     const eps = metricValue(metric, ["epsInclExtraItemsTTM", "epsExclExtraItemsTTM", "epsNormalizedAnnual"]) ?? quote?.epsTrailingTwelveMonths ?? annualValue(facts, "EarningsPerShareDiluted");
     const shares = latestValue(facts, "EntityCommonStockSharesOutstanding");
     const marketCapMillions = metricValue(metric, ["marketCapitalization"]);
@@ -295,6 +298,7 @@ export async function GET(_: Request, { params }: { params: { ticker: string } }
         marketCap,
         currency: chartMeta.currency ?? "USD",
         regularMarketPrice: currentPrice,
+        dayChangePercent,
         fiftyTwoWeekHigh: chartMetrics.high52w ?? null,
         fiftyTwoWeekLow: chartMetrics.low52w ?? null,
         movingAverage200d: chartMetrics.movingAverage200d ?? null,

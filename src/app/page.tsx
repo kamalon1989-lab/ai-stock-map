@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+export const dynamic = "force-dynamic";
+
 type Scores = {
   stock?: number | null;
   entry?: number | null;
@@ -68,7 +70,20 @@ type StockProfile = {
   oneLineThesis?: string;
   businessModel?: string;
   status?: string;
+  heatmapSectorId?: string;
+  heatmapWeight?: number | null;
   updatedAt: string;
+};
+
+type MarketData = {
+  marketSnapshot?: {
+    marketCap?: number | null;
+    regularMarketPrice?: number | null;
+    dayChangePercent?: number | null;
+    return3m?: number | null;
+    return1y?: number | null;
+    distanceFromHigh52w?: number | null;
+  };
 };
 
 type ThesisSnapshot = {
@@ -133,12 +148,19 @@ type AppState = {
   theses: ThesisSnapshot[];
   dailyChecks: DailyCheck[];
   aiNotes: AiNote[];
+  heatmapSectors?: Array<{
+    id: string;
+    name: string;
+    color: string;
+    order: number;
+  }>;
   companyDetails?: Record<string, {
     valueChainPosition?: ValueChainPosition;
     valuation?: Valuation;
     quarterlyData?: QuarterlyDatum[];
     catalysts?: Catalyst[];
     risks?: Risk[];
+    marketData?: MarketData;
   }>;
 };
 
@@ -160,6 +182,7 @@ const emptyState: AppState = {
   theses: [],
   dailyChecks: [],
   aiNotes: [],
+  heatmapSectors: [],
   companyDetails: {},
 };
 
@@ -216,6 +239,46 @@ REPORT_JSON 형식:
   "entryPlan": "",
   "stopRule": "",
   "memo": ""
+}
+\`\`\``;
+
+const heatmapPrompt = `내가 AI 인프라 관련주로 나만의 스탁 히트맵을 만들려고 해.
+
+조건:
+1. 내가 직접 큐레이션할 수 있게 섹터와 관심종목만 정리해줘.
+2. 섹터는 너무 많이 만들지 말고 5~8개 정도로 묶어줘.
+3. 각 종목은 ticker, companyName, weight, oneLineThesis를 넣어줘.
+4. weight는 히트맵 타일 크기에 쓸 관심도 가중치야. 핵심 종목은 4~6, 보조 관심종목은 1~3으로 줘.
+5. 확실하지 않은 종목은 넣지 말고, 모르면 비워둬.
+6. 설명은 짧게 하고 마지막에 HEATMAP_JSON 블록만 정확히 넣어줘.
+
+HEATMAP_JSON 형식:
+\`\`\`json
+{
+  "sectors": [
+    {
+      "name": "GPU/ASIC",
+      "stocks": [
+        {
+          "ticker": "NVDA",
+          "companyName": "NVIDIA",
+          "weight": 6,
+          "oneLineThesis": "AI 가속기 생태계의 핵심 플랫폼 기업"
+        }
+      ]
+    },
+    {
+      "name": "전력/냉각",
+      "stocks": [
+        {
+          "ticker": "VRT",
+          "companyName": "Vertiv",
+          "weight": 4,
+          "oneLineThesis": "AI 데이터센터 전력·냉각 인프라 수혜주"
+        }
+      ]
+    }
+  ]
 }
 \`\`\``;
 
@@ -368,6 +431,28 @@ function extractJsonBlock(text: string) {
   throw new Error("REPORT_JSON 블록을 찾지 못했어요.");
 }
 
+function extractAnyJson(text: string) {
+  const namedMatch = text.match(/(?:REPORT_JSON|HEATMAP_JSON)\s*:\s*```(?:json)?\s*([\s\S]*?)```/i);
+  if (namedMatch?.[1]) return namedMatch[1].trim();
+
+  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]) return fencedMatch[1].trim();
+
+  const firstObject = text.indexOf("{");
+  const lastObject = text.lastIndexOf("}");
+  const firstArray = text.indexOf("[");
+  const lastArray = text.lastIndexOf("]");
+
+  if (firstObject >= 0 && lastObject > firstObject && (firstArray < 0 || firstObject < firstArray)) {
+    return text.slice(firstObject, lastObject + 1);
+  }
+  if (firstArray >= 0 && lastArray > firstArray) {
+    return text.slice(firstArray, lastArray + 1);
+  }
+
+  throw new Error("JSON 블록을 찾지 못했어요.");
+}
+
 function parseReport(text: string): ThesisSnapshot | DailyCheck {
   const json = JSON.parse(extractJsonBlock(text));
   const type = json.type === "daily_check" ? "daily_check" : "thesis";
@@ -475,9 +560,127 @@ function persistState(next: AppState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 }
 
+function repairHeatmapSectors(state: AppState): AppState {
+  const existing = state.heatmapSectors ?? [];
+  if (existing.length > 0) return state;
+
+  const profiles = Object.values(state.profiles ?? {}).filter((profile) => profile.heatmapSectorId);
+  if (profiles.length === 0) return { ...state, heatmapSectors: [] };
+
+  const byId = new Map<string, string>();
+  for (const profile of profiles) {
+    if (!profile.heatmapSectorId) continue;
+    byId.set(profile.heatmapSectorId, profile.sector || profile.aiValueChain?.[0] || "미분류");
+  }
+
+  return {
+    ...state,
+    heatmapSectors: [...byId.entries()].map(([id, name], index) => ({
+      id,
+      name,
+      color: SECTOR_COLORS[index % SECTOR_COLORS.length],
+      order: index,
+    })),
+  };
+}
+
 function score(value?: number | null) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
   return Number(value).toFixed(1);
+}
+
+function compactMoney(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  const abs = Math.abs(Number(value));
+  if (abs >= 1_000_000_000_000) return `$${(Number(value) / 1_000_000_000_000).toFixed(2)}T`;
+  if (abs >= 1_000_000_000) return `$${(Number(value) / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `$${(Number(value) / 1_000_000).toFixed(2)}M`;
+  return `$${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function percent(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(1)}%`;
+}
+
+function tileTone(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "bg-slate-800 border-slate-700";
+  if (value >= 20) return "bg-emerald-700/90 border-emerald-500";
+  if (value >= 5) return "bg-emerald-900/90 border-emerald-700";
+  if (value > -5) return "bg-slate-700/90 border-slate-600";
+  if (value > -20) return "bg-rose-900/90 border-rose-700";
+  return "bg-rose-700/90 border-rose-500";
+}
+
+const SECTOR_COLORS = ["#10b981", "#38bdf8", "#818cf8", "#f59e0b", "#22d3ee", "#fb7185", "#a78bfa", "#94a3b8"];
+
+type TreemapRect<T> = {
+  item: T;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+function treemapLayout<T>(
+  items: T[],
+  valueOf: (item: T) => number,
+  x = 0,
+  y = 0,
+  w = 100,
+  h = 100
+): TreemapRect<T>[] {
+  const filtered = items
+    .map((item) => ({ item, value: Math.max(0.01, valueOf(item)) }))
+    .filter((row) => Number.isFinite(row.value) && row.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (filtered.length === 0) return [];
+  if (filtered.length === 1) return [{ item: filtered[0].item, x, y, w, h }];
+
+  const total = filtered.reduce((sum, row) => sum + row.value, 0);
+  let running = 0;
+  let splitIndex = 1;
+  for (let index = 0; index < filtered.length - 1; index += 1) {
+    const next = running + filtered[index].value;
+    if (Math.abs(total / 2 - next) <= Math.abs(total / 2 - running)) {
+      running = next;
+      splitIndex = index + 1;
+    } else {
+      break;
+    }
+  }
+
+  const first = filtered.slice(0, splitIndex);
+  const second = filtered.slice(splitIndex);
+  const firstTotal = first.reduce((sum, row) => sum + row.value, 0);
+  const ratio = firstTotal / total;
+
+  if (w >= h) {
+    const firstW = w * ratio;
+    return [
+      ...treemapLayout(first.map((row) => row.item), valueOf, x, y, firstW, h),
+      ...treemapLayout(second.map((row) => row.item), valueOf, x + firstW, y, w - firstW, h),
+    ];
+  }
+
+  const firstH = h * ratio;
+  return [
+    ...treemapLayout(first.map((row) => row.item), valueOf, x, y, w, firstH),
+    ...treemapLayout(second.map((row) => row.item), valueOf, x, y + firstH, w, h - firstH),
+  ];
+}
+
+function heatColor(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "#3f3f46";
+  const v = Math.max(-8, Math.min(8, Number(value)));
+  if (v >= 5) return "#00a35b";
+  if (v >= 2) return "#007a3d";
+  if (v > 0.2) return "#173d2a";
+  if (v >= -0.2) return "#3f3f46";
+  if (v >= -2) return "#7f1d1d";
+  if (v >= -5) return "#991b1b";
+  return "#ef3340";
 }
 
 function Button({
@@ -517,19 +720,30 @@ export default function MapPage() {
   const [promptMode, setPromptMode] = useState<"thesis" | "daily">("thesis");
   const [hydrated, setHydrated] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
+  const [newSectorName, setNewSectorName] = useState("");
+  const [newStockTicker, setNewStockTicker] = useState("");
+  const [newStockName, setNewStockName] = useState("");
+  const [newStockSectorId, setNewStockSectorId] = useState("");
+  const [newStockWeight, setNewStockWeight] = useState("1");
+  const [sizeMode, setSizeMode] = useState<"marketCap" | "interest">("marketCap");
+  const [colorMode, setColorMode] = useState<"dayChangePercent" | "return3m" | "return1y" | "distanceFromHigh52w">("dayChangePercent");
+  const [heatmapJson, setHeatmapJson] = useState("");
+  const [heatmapPromptCopied, setHeatmapPromptCopied] = useState(false);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as AppState;
-        setState({
+        setState(repairHeatmapSectors({
           profiles: parsed.profiles ?? {},
           theses: parsed.theses ?? [],
           dailyChecks: parsed.dailyChecks ?? [],
           aiNotes: parsed.aiNotes ?? [],
+          heatmapSectors: parsed.heatmapSectors ?? [],
           companyDetails: parsed.companyDetails ?? {},
-        });
+        }));
       }
     } catch {
       setState(emptyState);
@@ -547,6 +761,11 @@ export default function MapPage() {
     () => Object.values(state.profiles).sort((a, b) => a.ticker.localeCompare(b.ticker)),
     [state.profiles]
   );
+  const heatmapSectors = useMemo(
+    () => [...(state.heatmapSectors ?? [])].sort((a, b) => a.order - b.order),
+    [state.heatmapSectors]
+  );
+  const heatmapProfiles = profiles.filter((profile) => profile.heatmapSectorId);
 
   const selected = selectedTicker ? state.profiles[selectedTicker] : profiles[0];
   const activeTicker = selected?.ticker ?? "";
@@ -566,6 +785,374 @@ export default function MapPage() {
     if (!selectedTicker && profiles[0]) setSelectedTicker(profiles[0].ticker);
   }, [profiles, selectedTicker]);
 
+  const addHeatmapSector = () => {
+    const name = newSectorName.trim();
+    if (!name) {
+      setMessage("추가할 섹터 이름을 입력해 주세요.");
+      return;
+    }
+
+    if (heatmapSectors.some((sector) => sector.name.toLowerCase() === name.toLowerCase())) {
+      setMessage("이미 같은 이름의 섹터가 있어요.");
+      return;
+    }
+
+    const newSector = {
+      id: uid("sector"),
+      name,
+      color: SECTOR_COLORS[heatmapSectors.length % SECTOR_COLORS.length],
+      order: heatmapSectors.length,
+    };
+    setState((current) => {
+      const sectors = current.heatmapSectors ?? [];
+      const next = {
+        ...current,
+        heatmapSectors: [...sectors, newSector],
+      };
+      persistState(next);
+      return next;
+    });
+    setNewSectorName("");
+    setNewStockSectorId(newSector.id);
+    setMessage(`${name} 섹터를 히트맵에 추가했어요.`);
+  };
+
+  const removeHeatmapSector = (sectorId: string) => {
+    const sector = heatmapSectors.find((item) => item.id === sectorId);
+    if (!sector) return;
+    if (!window.confirm(`${sector.name} 섹터를 히트맵에서 숨길까요? 종목 상세 데이터는 삭제되지 않습니다.`)) return;
+
+    setState((current) => {
+      const profilesNext = Object.fromEntries(
+        Object.entries(current.profiles).map(([ticker, profile]) => [
+          ticker,
+          profile.heatmapSectorId === sectorId ? { ...profile, heatmapSectorId: undefined } : profile,
+        ])
+      );
+      const next = {
+        ...current,
+        profiles: profilesNext,
+        heatmapSectors: (current.heatmapSectors ?? []).filter((item) => item.id !== sectorId),
+      };
+      persistState(next);
+      return next;
+    });
+    setMessage(`${sector.name} 섹터를 히트맵에서 숨겼어요.`);
+  };
+
+  const addHeatmapStock = () => {
+    const ticker = asTicker(newStockTicker);
+    const sector = heatmapSectors.find((item) => item.id === newStockSectorId);
+    if (!ticker || !sector) {
+      setMessage("티커와 섹터를 모두 입력해 주세요.");
+      return;
+    }
+
+    const weight = Number(newStockWeight);
+    setState((current) => {
+      const previous = current.profiles[ticker];
+      const next = {
+        ...current,
+        profiles: {
+          ...current.profiles,
+          [ticker]: {
+            ticker,
+            companyName: newStockName.trim() || previous?.companyName || ticker,
+            sector: sector.name,
+            aiValueChain: previous?.aiValueChain?.length ? previous.aiValueChain : [sector.name],
+            oneLineThesis: previous?.oneLineThesis,
+            businessModel: previous?.businessModel,
+            status: previous?.status || "관심종목",
+            heatmapSectorId: sector.id,
+            heatmapWeight: Number.isFinite(weight) && weight > 0 ? weight : previous?.heatmapWeight ?? 1,
+            updatedAt: today(),
+          },
+        },
+        companyDetails: {
+          ...(current.companyDetails ?? {}),
+          [ticker]: current.companyDetails?.[ticker] ?? {},
+        },
+      };
+      persistState(next);
+      return next;
+    });
+    setSelectedTicker(ticker);
+    setNewStockTicker("");
+    setNewStockName("");
+    setNewStockWeight("1");
+    setMessage(`${ticker}를 ${sector.name} 섹터에 추가했어요.`);
+  };
+
+  const importHeatmapJson = () => {
+    try {
+      const parsed = JSON.parse(extractAnyJson(heatmapJson)) as unknown;
+      const root = Array.isArray(parsed) ? { sectors: parsed } : parsed;
+
+      if (!root || typeof root !== "object") {
+        throw new Error("JSON 최상위 값은 객체이거나 섹터 배열이어야 해요.");
+      }
+
+      const record = root as Record<string, unknown>;
+      const rawSectors = Array.isArray(record.sectors)
+        ? record.sectors
+        : Array.isArray(record.heatmapSectors)
+          ? record.heatmapSectors
+          : [];
+      const rawFlatStocks = Array.isArray(record.stocks) ? record.stocks : [];
+
+      if (rawSectors.length === 0 && rawFlatStocks.length === 0) {
+        throw new Error("sectors 또는 stocks 배열이 필요해요.");
+      }
+
+      let importedSectorCount = 0;
+      let importedStockCount = 0;
+
+      setState((current) => {
+        const sectorsNext = [...(current.heatmapSectors ?? [])];
+        const profilesNext = { ...current.profiles };
+        const detailsNext = { ...(current.companyDetails ?? {}) };
+
+        const ensureSector = (nameValue: unknown) => {
+          const name = String(nameValue ?? "미분류").trim() || "미분류";
+          const existing = sectorsNext.find((sector) => sector.name.toLowerCase() === name.toLowerCase());
+          if (existing) return existing;
+
+          const sector = {
+            id: uid("sector"),
+            name,
+            color: SECTOR_COLORS[sectorsNext.length % SECTOR_COLORS.length],
+            order: sectorsNext.length,
+          };
+          sectorsNext.push(sector);
+          importedSectorCount += 1;
+          return sector;
+        };
+
+        const upsertStock = (stockValue: unknown, fallbackSectorName?: string) => {
+          if (!stockValue || typeof stockValue !== "object") return;
+          const stock = stockValue as Record<string, unknown>;
+          const ticker = asTicker(stock.ticker ?? stock.symbol);
+          if (!ticker) return;
+
+          const sector = ensureSector(stock.sector ?? stock.sectorName ?? stock.layer ?? fallbackSectorName);
+          const previous = profilesNext[ticker];
+          const weight = Number(stock.weight ?? stock.heatmapWeight ?? stock.interestWeight);
+
+          profilesNext[ticker] = {
+            ...previous,
+            ticker,
+            companyName: String(stock.companyName ?? stock.company ?? stock.name ?? previous?.companyName ?? ticker),
+            sector: sector.name,
+            aiValueChain: previous?.aiValueChain?.length ? previous.aiValueChain : [sector.name],
+            oneLineThesis: String(stock.oneLineThesis ?? stock.thesis ?? previous?.oneLineThesis ?? ""),
+            businessModel: previous?.businessModel,
+            status: String(stock.status ?? previous?.status ?? "관심종목"),
+            heatmapSectorId: sector.id,
+            heatmapWeight: Number.isFinite(weight) && weight > 0 ? weight : previous?.heatmapWeight ?? 1,
+            updatedAt: today(),
+          };
+          detailsNext[ticker] = detailsNext[ticker] ?? {};
+          importedStockCount += 1;
+        };
+
+        rawSectors.forEach((sectorValue) => {
+          if (!sectorValue || typeof sectorValue !== "object") {
+            ensureSector(sectorValue);
+            return;
+          }
+          const sectorRecord = sectorValue as Record<string, unknown>;
+          const sector = ensureSector(sectorRecord.name ?? sectorRecord.sector ?? sectorRecord.label);
+          const stocks = Array.isArray(sectorRecord.stocks)
+            ? sectorRecord.stocks
+            : Array.isArray(sectorRecord.tickers)
+              ? sectorRecord.tickers.map((ticker) => ({ ticker }))
+              : [];
+          stocks.forEach((stock) => upsertStock(stock, sector.name));
+        });
+
+        rawFlatStocks.forEach((stock) => upsertStock(stock));
+
+        const next = {
+          ...current,
+          heatmapSectors: sectorsNext,
+          profiles: profilesNext,
+          companyDetails: detailsNext,
+        };
+        persistState(next);
+        return next;
+      });
+
+      setHeatmapJson("");
+      setMessage(`JSON으로 섹터 ${importedSectorCount}개, 종목 ${importedStockCount}개를 히트맵에 반영했어요.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "히트맵 JSON을 읽지 못했어요.");
+    }
+  };
+
+  const removeHeatmapStock = (ticker: string) => {
+    if (!window.confirm(`${ticker}를 완전히 삭제할까요? 종목 상세 리서치와 시장 데이터도 함께 삭제됩니다.`)) return;
+    setState((current) => {
+      const profilesNext = { ...current.profiles };
+      const detailsNext = { ...(current.companyDetails ?? {}) };
+      delete profilesNext[ticker];
+      delete detailsNext[ticker];
+      const next = {
+        ...current,
+        profiles: profilesNext,
+        theses: current.theses.filter((item) => item.ticker !== ticker),
+        dailyChecks: current.dailyChecks.filter((item) => item.ticker !== ticker),
+        aiNotes: current.aiNotes.filter((item) => item.ticker !== ticker),
+        companyDetails: detailsNext,
+      };
+      persistState(next);
+      return next;
+    });
+    setMessage(`${ticker}를 삭제했어요.`);
+  };
+
+  const changeHeatmapSector = (ticker: string, sectorId: string) => {
+    const sector = heatmapSectors.find((item) => item.id === sectorId);
+    if (!sector) return;
+    setState((current) => {
+      const previous = current.profiles[ticker];
+      if (!previous) return current;
+      const next = {
+        ...current,
+        profiles: {
+          ...current.profiles,
+          [ticker]: {
+            ...previous,
+            sector: sector.name,
+            heatmapSectorId: sector.id,
+            updatedAt: today(),
+          },
+        },
+      };
+      persistState(next);
+      return next;
+    });
+  };
+
+  const updateHeatmapWeight = (ticker: string, weight: number) => {
+    setState((current) => {
+      const previous = current.profiles[ticker];
+      if (!previous) return current;
+      const next = {
+        ...current,
+        profiles: {
+          ...current.profiles,
+          [ticker]: {
+            ...previous,
+            heatmapWeight: Number.isFinite(weight) && weight > 0 ? weight : 1,
+            updatedAt: today(),
+          },
+        },
+      };
+      persistState(next);
+      return next;
+    });
+  };
+
+  const metricFor = (profile: StockProfile) => {
+    const snapshot = state.companyDetails?.[profile.ticker]?.marketData?.marketSnapshot;
+    if (colorMode === "dayChangePercent") return snapshot?.dayChangePercent ?? null;
+    if (colorMode === "return1y") return snapshot?.return1y ?? null;
+    if (colorMode === "distanceFromHigh52w") return snapshot?.distanceFromHigh52w ?? null;
+    return snapshot?.return3m ?? null;
+  };
+
+  const marketCapFor = (profile: StockProfile) => {
+    return state.companyDetails?.[profile.ticker]?.marketData?.marketSnapshot?.marketCap ?? null;
+  };
+
+  const treemapSizeFor = (profile: StockProfile) => {
+    const marketCap = marketCapFor(profile);
+    if (sizeMode === "marketCap" && marketCap && marketCap > 0) return marketCap;
+    return Math.max(1, profile.heatmapWeight ?? 1) * 1_000_000_000;
+  };
+
+  const basisFor = (profile: StockProfile) => {
+    const snapshot = state.companyDetails?.[profile.ticker]?.marketData?.marketSnapshot;
+    if (sizeMode === "marketCap") {
+      const cap = snapshot?.marketCap;
+      if (!cap || cap <= 0) return 150;
+      return Math.max(130, Math.min(340, Math.log10(cap) * 24));
+    }
+    return Math.max(130, Math.min(280, (profile.heatmapWeight ?? 1) * 46));
+  };
+
+  const syncHeatmapMarketData = async () => {
+    const tickers = [...new Set(heatmapProfiles.map((profile) => profile.ticker))];
+    if (tickers.length === 0) {
+      setMessage("시장 데이터를 동기화할 히트맵 종목이 없습니다.");
+      return;
+    }
+
+    setHeatmapLoading(true);
+    setMessage(`시장 데이터 동기화 중... (${tickers.length}개)`);
+
+    try {
+      const settled = await Promise.allSettled(
+        tickers.map(async (ticker) => {
+          const response = await fetch(`/api/market/${ticker}`);
+          if (!response.ok) throw new Error(`${ticker} 시장 데이터 요청 실패`);
+          return response.json();
+        })
+      );
+      const results = settled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      const failures = settled
+        .map((result, index) => result.status === "rejected" ? tickers[index] : "")
+        .filter(Boolean);
+
+      if (results.length === 0) {
+        throw new Error("동기화에 성공한 종목이 없습니다.");
+      }
+
+      setState((current) => {
+        const detailsNext = { ...(current.companyDetails ?? {}) };
+        const profilesNext = { ...current.profiles };
+
+        for (const data of results) {
+          const ticker = asTicker(data.ticker);
+          if (!ticker) continue;
+          detailsNext[ticker] = {
+            ...(detailsNext[ticker] ?? {}),
+            valuation: {
+              ...(detailsNext[ticker]?.valuation ?? {}),
+              ...(data.valuation ?? {}),
+            },
+            marketData: data,
+          };
+          if (profilesNext[ticker]) {
+            profilesNext[ticker] = {
+              ...profilesNext[ticker],
+              companyName: data.companyName || profilesNext[ticker].companyName,
+              updatedAt: today(),
+            };
+          }
+        }
+
+        const next = {
+          ...current,
+          profiles: profilesNext,
+          companyDetails: detailsNext,
+        };
+        persistState(next);
+        return next;
+      });
+
+      setMessage(
+        failures.length
+          ? `오늘 변동률과 시가총액을 ${results.length}개 종목에 반영했어요. 실패: ${failures.join(", ")}`
+          : `오늘 변동률과 시가총액을 ${results.length}개 종목에 반영했어요.`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "시장 데이터 동기화에 실패했어요.");
+    } finally {
+      setHeatmapLoading(false);
+    }
+  };
+
   const saveParsedReport = () => {
     try {
       const report = parseReport(paste);
@@ -576,18 +1163,28 @@ export default function MapPage() {
       }
 
       setState((current) => {
+        const previous = current.profiles[report.ticker];
+        const matchingSector = (current.heatmapSectors ?? []).find((sector) => {
+          const values = [report.sector, ...(report.aiValueChain ?? [])]
+            .map((item) => String(item).trim().toLowerCase())
+            .filter(Boolean);
+          return values.some((value) => value.includes(sector.name.toLowerCase()) || sector.name.toLowerCase().includes(value));
+        });
         const next = {
           ...current,
           profiles: {
             ...current.profiles,
             [report.ticker]: {
+              ...previous,
               ticker: report.ticker,
               companyName: report.companyName || report.ticker,
-              sector: report.sector || "미분류",
-              aiValueChain: report.aiValueChain ?? [],
-              oneLineThesis: report.oneLineThesis,
-              businessModel: report.businessModel,
-              status: report.action || "검토",
+              sector: report.sector || previous?.sector || "미분류",
+              aiValueChain: report.aiValueChain?.length ? report.aiValueChain : previous?.aiValueChain ?? [],
+              oneLineThesis: report.oneLineThesis || previous?.oneLineThesis,
+              businessModel: report.businessModel || previous?.businessModel,
+              status: report.action || previous?.status || "검토",
+              heatmapSectorId: previous?.heatmapSectorId ?? matchingSector?.id,
+              heatmapWeight: previous?.heatmapWeight ?? 1,
               updatedAt: report.reportDate,
             },
           },
@@ -728,6 +1325,27 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
     window.setTimeout(() => setPromptCopied(false), 1200);
   };
 
+  const copyHeatmapPrompt = async () => {
+    await navigator.clipboard.writeText(heatmapPrompt);
+    setHeatmapPromptCopied(true);
+    window.setTimeout(() => setHeatmapPromptCopied(false), 1200);
+  };
+
+  const heatmapSectorNodes = heatmapSectors.map((sector) => {
+    const items = profiles.filter((profile) => profile.heatmapSectorId === sector.id);
+    const value = items.reduce((sum, profile) => sum + treemapSizeFor(profile), 0);
+    return { sector, items, value: value || 1 };
+  });
+  const heatmapSectorRects = treemapLayout(heatmapSectorNodes, (node) => node.value);
+  const marketCapCount = heatmapProfiles.filter((profile) => {
+    const value = marketCapFor(profile);
+    return value !== null && value !== undefined && value > 0;
+  }).length;
+  const metricCount = heatmapProfiles.filter((profile) => {
+    const value = metricFor(profile);
+    return value !== null && value !== undefined && !Number.isNaN(Number(value));
+  }).length;
+
   return (
     <div className="min-h-screen bg-[#0b0d12] text-slate-100">
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
@@ -750,116 +1368,384 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
       <main className="mx-auto max-w-7xl px-4 py-5">
         <section className="space-y-5">
           <div className="grid gap-3 md:grid-cols-3">
-            <Metric label="등록 종목" value={profiles.length} />
-            <Metric label="최초 분석" value={state.theses.length} />
-            <Metric label="추가 리서치" value={state.dailyChecks.length + state.aiNotes.length} />
+            <Metric label="내 섹터" value={heatmapSectors.length} />
+            <Metric label="히트맵 종목" value={heatmapProfiles.length} />
+            <Metric label="전체 저장 종목" value={profiles.length} />
           </div>
 
           <section className="rounded-lg border border-slate-800 bg-slate-900/45 p-4">
-            <div className="mb-4 flex items-end justify-between gap-3">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
-                <h2 className="text-lg font-semibold">AI 밸류체인 맵</h2>
-                <p className="mt-1 text-sm text-slate-400">종목은 AI가 준 `aiValueChain` 값에 따라 자동 배치됩니다.</p>
+                <h2 className="text-lg font-semibold">나만의 AI 인프라 스탁 히트맵</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-400">
+                  내가 만든 섹터와 관심종목만 보여주고, 시가총액은 면적, 오늘 변동률은 색상으로 표현합니다.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={syncHeatmapMarketData} tone="emerald">
+                  {heatmapLoading ? "동기화 중..." : "오늘 데이터 동기화"}
+                </Button>
+                <select
+                  value={sizeMode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value as typeof sizeMode;
+                    setSizeMode(nextMode);
+                    if (nextMode === "marketCap" && heatmapProfiles.length > 0 && marketCapCount < heatmapProfiles.length && !heatmapLoading) {
+                      void syncHeatmapMarketData();
+                    }
+                  }}
+                  className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none"
+                >
+                  <option value="marketCap">크기: 시가총액</option>
+                  <option value="interest">크기: 관심도</option>
+                </select>
+                <select
+                  value={colorMode}
+                  onChange={(event) => setColorMode(event.target.value as typeof colorMode)}
+                  className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none"
+                >
+                  <option value="dayChangePercent">색상: 오늘 변동률</option>
+                  <option value="return3m">색상: 3개월 수익률</option>
+                  <option value="return1y">색상: 1년 수익률</option>
+                  <option value="distanceFromHigh52w">색상: 52주 고점 대비</option>
+                </select>
               </div>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-2">
-              {VALUE_CHAIN.map((chain) => {
-                const items = profiles.filter((profile) => getPrimaryChain(profile).id === chain.id);
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                <h3 className="font-semibold">섹터 만들기</h3>
+                <div className="mt-3 flex gap-2">
+                  <input
+                    value={newSectorName}
+                    onChange={(event) => setNewSectorName(event.target.value)}
+                    placeholder="예: AI 전력/냉각"
+                    className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                  />
+                  <Button onClick={addHeatmapSector} tone="emerald">추가</Button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {heatmapSectors.length === 0 ? (
+                    <p className="text-sm text-slate-600">아직 만든 섹터가 없습니다.</p>
+                  ) : (
+                    heatmapSectors.map((sector) => (
+                      <span key={sector.id} className="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: sector.color }} />
+                        {sector.name}
+                        <button
+                          type="button"
+                          onClick={() => removeHeatmapSector(sector.id)}
+                          className="text-slate-500 hover:text-rose-300"
+                          aria-label={`${sector.name} 섹터 숨기기`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
 
-                return (
-                  <div key={chain.id} className="rounded-lg border border-slate-800 bg-slate-950/45 p-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${chain.accent}`} />
-                      <h3 className="font-semibold">{chain.label}</h3>
-                      <span className="ml-auto text-xs text-slate-500">{items.length}</span>
-                    </div>
-                    <div className="mt-3 flex min-h-16 flex-wrap content-start gap-2">
-                      {items.length === 0 ? (
-                        <p className="text-sm text-slate-600">아직 연결된 종목이 없습니다.</p>
-                      ) : (
-                        items.map((profile) => (
-                          <Link
-                            key={`${chain.id}-${profile.ticker}`}
-                            href={`/company/${profile.ticker}`}
-                            className={`rounded-md border px-2.5 py-2 text-left transition-colors ${
-                              activeTicker === profile.ticker
-                                ? "border-emerald-400 bg-emerald-950/40"
-                                : "border-slate-700 bg-slate-900 hover:border-slate-500"
-                            }`}
-                          >
-                            <span className="block font-mono text-sm text-emerald-300">{profile.ticker}</span>
-                            <span className="block max-w-32 truncate text-xs text-slate-400">{profile.status || "검토"}</span>
-                            {(profile.aiValueChain ?? []).length > 1 && (
-                              <span className="mt-1 block text-[10px] text-slate-500">
-                                +{profile.aiValueChain.length - 1} 연결
-                              </span>
-                            )}
-                          </Link>
-                        ))
-                      )}
-                    </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                <h3 className="font-semibold">관심종목 추가</h3>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[0.8fr_1.2fr_1.2fr_0.7fr_auto]">
+                  <input
+                    value={newStockTicker}
+                    onChange={(event) => setNewStockTicker(event.target.value.toUpperCase())}
+                    placeholder="티커"
+                    className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                  />
+                  <input
+                    value={newStockName}
+                    onChange={(event) => setNewStockName(event.target.value)}
+                    placeholder="회사명 선택"
+                    className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                  />
+                  <select
+                    value={newStockSectorId}
+                    onChange={(event) => setNewStockSectorId(event.target.value)}
+                    className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                  >
+                    <option value="">섹터 선택</option>
+                    {heatmapSectors.map((sector) => (
+                      <option key={sector.id} value={sector.id}>{sector.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newStockWeight}
+                    onChange={(event) => setNewStockWeight(event.target.value)}
+                    placeholder="관심도"
+                    className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                  />
+                  <Button onClick={addHeatmapStock} tone="emerald">추가</Button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">관심도는 시가총액 데이터가 없을 때 타일 크기를 정하는 수동 가중치입니다.</p>
+              </div>
+            </div>
+
+            <details className="mt-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+              <summary className="cursor-pointer font-semibold">AI JSON으로 섹터/종목 한 번에 추가</summary>
+              <div className="mt-3 grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+                <div>
+                  <textarea
+                    value={heatmapJson}
+                    onChange={(event) => setHeatmapJson(event.target.value)}
+                    placeholder="AI가 준 HEATMAP_JSON 블록을 여기에 붙여넣으세요."
+                    className="h-56 w-full resize-y rounded-md border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-emerald-500"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button onClick={importHeatmapJson} tone="emerald">JSON 반영</Button>
+                    <Button onClick={() => setHeatmapJson("")}>비우기</Button>
                   </div>
-                );
-              })}
+                  <p className="mt-2 text-xs text-slate-500">
+                    이미 있는 섹터와 티커는 새로 만들지 않고 업데이트합니다. 종목 상세 페이지에 쌓인 리서치 데이터는 유지됩니다.
+                  </p>
+                </div>
+                <div className="overflow-hidden rounded-md border border-slate-800 bg-slate-950">
+                  <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+                    <span className="text-xs text-slate-500">히트맵 JSON 요청 프롬프트</span>
+                    <button
+                      type="button"
+                      onClick={copyHeatmapPrompt}
+                      className="relative h-7 w-7 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800"
+                      title="프롬프트 복사"
+                      aria-label="히트맵 프롬프트 복사"
+                    >
+                      <span className="absolute left-[9px] top-[7px] h-3 w-3 rounded-sm border border-slate-300" />
+                      <span className="absolute left-[6px] top-[10px] h-3 w-3 rounded-sm border border-slate-500 bg-slate-900" />
+                    </button>
+                  </div>
+                  <pre className="max-h-56 overflow-auto p-4 text-xs leading-relaxed text-slate-300">
+                    {heatmapPrompt}
+                  </pre>
+                  {heatmapPromptCopied && <p className="border-t border-slate-800 px-3 py-2 text-xs text-emerald-300">복사됨</p>}
+                </div>
+              </div>
+            </details>
+            {message && <p className="mt-3 text-sm text-slate-400">{message}</p>}
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
+              <span className="rounded border border-slate-800 bg-slate-950 px-2 py-1">
+                시가총액 데이터 {marketCapCount}/{heatmapProfiles.length}
+              </span>
+              <span className="rounded border border-slate-800 bg-slate-950 px-2 py-1">
+                색상 데이터 {metricCount}/{heatmapProfiles.length}
+              </span>
+              {sizeMode === "marketCap" && marketCapCount === 0 && heatmapProfiles.length > 0 && (
+                <span className="rounded border border-amber-800 bg-amber-950/30 px-2 py-1 text-amber-300">
+                  아직 시가총액이 없어 관심도 기준처럼 보입니다. 오늘 데이터 동기화를 눌러주세요.
+                </span>
+              )}
             </div>
+
+            <div className="mt-4 rounded-lg border border-slate-800 bg-black/30 p-3">
+              {heatmapSectors.length === 0 ? (
+                <div className="flex min-h-72 items-center justify-center rounded-md border border-dashed border-slate-700 text-sm text-slate-500">
+                  섹터를 추가하면 나만의 AI 인프라 히트맵이 시작됩니다.
+                </div>
+              ) : (
+                <>
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                    <span className="rounded border border-slate-700 bg-black/70 px-2 py-1">AI 인프라 커스텀 인덱스</span>
+                    <span className="rounded border border-slate-700 bg-black/70 px-2 py-1">면적: {sizeMode === "marketCap" ? "시가총액" : "관심도"}</span>
+                    <span className="rounded border border-slate-700 bg-black/70 px-2 py-1">색상: {colorMode === "dayChangePercent" ? "오늘 변동률" : colorMode === "return3m" ? "3개월 수익률" : colorMode === "return1y" ? "1년 수익률" : "52주 고점 대비"}</span>
+                    <span className="rounded border border-slate-700 bg-black/70 px-2 py-1">시총 {marketCapCount}/{heatmapProfiles.length}</span>
+                  </div>
+                  <div className="relative h-[720px] overflow-hidden rounded-md border border-slate-800 bg-black">
+                  {heatmapSectorRects.map(({ item: node, x, y, w, h }) => {
+                    const stockRects = treemapLayout(node.items, treemapSizeFor);
+                    const sectorTooSmall = w < 18 || h < 16;
+
+                    return (
+                      <div
+                        key={node.sector.id}
+                        className="absolute overflow-hidden border border-black/80 bg-zinc-950"
+                        style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
+                      >
+                        <div className="absolute left-0 top-0 z-10 flex h-7 w-full items-center justify-between bg-black/70 px-2 text-xs font-semibold text-slate-300">
+                          <span className="truncate">{node.sector.name} ›</span>
+                          {!sectorTooSmall && <span className="text-slate-500">{node.items.length}</span>}
+                        </div>
+                        <div className="absolute inset-x-0 bottom-0 top-7">
+                          {node.items.length === 0 ? (
+                            <div className="flex h-full items-center justify-center text-xs text-slate-600">비어 있음</div>
+                          ) : (
+                            stockRects.map(({ item: profile, x: sx, y: sy, w: sw, h: sh }) => {
+                              const metric = metricFor(profile);
+                              const area = sw * sh;
+                              const tiny = sw < 8 || sh < 10 || area < 120;
+                              const singleLine = sh < 24 || area < 420;
+                              const large = sw >= 18 && sh >= 32 && area >= 650;
+                              const oneLineSize = Math.max(9, Math.min(17, Math.min(sw, sh) * 0.78));
+                              const tickerSize = large ? Math.max(16, Math.min(24, Math.min(sw, sh) * 0.82)) : Math.max(12, Math.min(18, Math.min(sw, sh) * 0.62));
+                              const percentSize = large ? Math.max(12, Math.min(18, Math.min(sw, sh) * 0.62)) : Math.max(10, Math.min(14, Math.min(sw, sh) * 0.48));
+
+                              return (
+                                <div
+                                  key={`${node.sector.id}-${profile.ticker}`}
+                                  className="absolute overflow-hidden border border-black/80 transition-[filter] hover:z-20 hover:brightness-125"
+                                  style={{
+                                    left: `${sx}%`,
+                                    top: `${sy}%`,
+                                    width: `${sw}%`,
+                                    height: `${sh}%`,
+                                    backgroundColor: heatColor(metric),
+                                  }}
+                                  title={`${profile.ticker} ${percent(metric)} / ${profile.companyName}`}
+                                >
+                                  <Link href={`/company/${profile.ticker}`} className="flex h-full items-center justify-center overflow-hidden px-1 text-center font-mono font-bold leading-[0.9] text-white">
+                                    {tiny ? (
+                                      <span className="truncate text-[9px]">{profile.ticker}</span>
+                                    ) : singleLine ? (
+                                      <span
+                                        className="max-w-full truncate whitespace-nowrap"
+                                        style={{ fontSize: `${oneLineSize}px` }}
+                                      >
+                                        {sh < 16 ? profile.ticker : `${profile.ticker} ${percent(metric)}`}
+                                      </span>
+                                    ) : (
+                                      <span className="flex min-w-0 flex-col items-center justify-center gap-0.5">
+                                        <span
+                                          className="max-w-full truncate whitespace-nowrap"
+                                          style={{ fontSize: `${tickerSize}px` }}
+                                        >
+                                          {profile.ticker}
+                                        </span>
+                                        <span
+                                          className="max-w-full truncate whitespace-nowrap"
+                                          style={{ fontSize: `${percentSize}px` }}
+                                        >
+                                          {percent(metric)}
+                                        </span>
+                                      </span>
+                                    )}
+                                  </Link>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <details className="mt-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+              <summary className="cursor-pointer font-semibold">히트맵 종목 관리</summary>
+              <div className="mt-3 max-h-80 overflow-auto rounded-md border border-slate-800">
+                <table className="w-full min-w-[760px] border-collapse text-sm">
+                  <thead className="sticky top-0 bg-slate-950 text-xs text-slate-500">
+                    <tr>
+                      <th className="border-b border-slate-800 px-3 py-2 text-left">티커</th>
+                      <th className="border-b border-slate-800 px-3 py-2 text-left">회사</th>
+                      <th className="border-b border-slate-800 px-3 py-2 text-left">섹터</th>
+                      <th className="border-b border-slate-800 px-3 py-2 text-left">관심도</th>
+                      <th className="border-b border-slate-800 px-3 py-2 text-left">시가총액</th>
+                      <th className="border-b border-slate-800 px-3 py-2 text-right">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {heatmapProfiles
+                      .sort((a, b) => a.ticker.localeCompare(b.ticker))
+                      .map((profile) => {
+                        const snapshot = state.companyDetails?.[profile.ticker]?.marketData?.marketSnapshot;
+                        return (
+                          <tr key={`manage-${profile.ticker}`} className="border-b border-slate-900 text-slate-300">
+                            <td className="px-3 py-2 font-mono font-bold text-white">{profile.ticker}</td>
+                            <td className="px-3 py-2">{profile.companyName}</td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={profile.heatmapSectorId ?? ""}
+                                onChange={(event) => changeHeatmapSector(profile.ticker, event.target.value)}
+                                className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 outline-none"
+                              >
+                                {heatmapSectors.map((sector) => (
+                                  <option key={sector.id} value={sector.id}>{sector.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                min="1"
+                                value={profile.heatmapWeight ?? 1}
+                                onChange={(event) => updateHeatmapWeight(profile.ticker, Number(event.target.value))}
+                                className="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 outline-none"
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-mono text-xs text-slate-400">{compactMoney(snapshot?.marketCap)}</td>
+                            <td className="px-3 py-2 text-right">
+                              <Button onClick={() => removeHeatmapStock(profile.ticker)} tone="rose">삭제</Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                히트맵 타일 위에는 버튼을 올리지 않고, 삭제와 관심도 수정은 여기에서 관리합니다. 삭제는 종목 상세 리서치와 시장 데이터까지 함께 지웁니다.
+              </p>
+            </details>
           </section>
 
-          <section className="rounded-lg border border-slate-800 bg-slate-900/45 p-4">
-            <h2 className="text-lg font-semibold">최초 분석 붙여넣기</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              메인에서는 회사 정체성과 투자 가설만 가볍게 저장합니다. 밸류에이션, 실적, Catalyst, 리스크는 종목 페이지에서 채워갑니다.
-            </p>
-            <textarea
-              value={paste}
-              onChange={(event) => setPaste(event.target.value)}
-              placeholder="여기에 최초 등록용 thesis REPORT_JSON 답변 전체를 붙여넣으세요."
-              className="mt-4 h-56 w-full resize-y rounded-md border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-emerald-500"
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button onClick={saveParsedReport} tone="emerald">최초 분석 저장</Button>
-              <Button onClick={() => setPaste("")}>비우기</Button>
-              {message && <span className="text-sm text-slate-400">{message}</span>}
+          <details className="rounded-lg border border-slate-800 bg-slate-900/45 p-4">
+            <summary className="cursor-pointer text-lg font-semibold">도구함: 최초분석 붙여넣기 / 사용방법 / 프롬프트</summary>
+            <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+              <h2 className="text-lg font-semibold">최초 분석 붙여넣기</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                메인에서는 회사 정체성과 투자 가설만 가볍게 저장합니다. 섹터 배치는 위 히트맵에서 직접 정합니다.
+              </p>
+              <textarea
+                value={paste}
+                onChange={(event) => setPaste(event.target.value)}
+                placeholder="여기에 최초 등록용 thesis REPORT_JSON 답변 전체를 붙여넣으세요."
+                className="mt-4 h-56 w-full resize-y rounded-md border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-emerald-500"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button onClick={saveParsedReport} tone="emerald">최초 분석 저장</Button>
+                <Button onClick={() => setPaste("")}>비우기</Button>
+                {message && <span className="text-sm text-slate-400">{message}</span>}
+              </div>
             </div>
-            <p className="mt-3 text-xs text-slate-500">
-              이후 밸류체인 포지션, 목표주가, 분기 실적, 향후 이벤트, 리스크는 생성된 종목을 클릭해 상세 페이지에서 추가합니다.
-            </p>
-          </section>
 
-          <section className="rounded-lg border border-slate-800 bg-slate-900/45 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
               <div>
                 <h2 className="text-lg font-semibold">사용방법</h2>
-                <p className="mt-1 text-sm text-slate-400">다른 사용자가 와도 헷갈리지 않게, 작업 흐름을 화면 안에 고정했습니다.</p>
+                <p className="mt-1 text-sm text-slate-400">히트맵은 수동 큐레이션이 기준이고, 분석 기록은 종목 상세 페이지에 쌓입니다.</p>
               </div>
-            </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <GuideStep title="1. 최초 분석" body="회사 정체성과 투자 가설만 간단히 저장해 종목을 만듭니다." />
-              <GuideStep title="2. 맵 생성" body="저장된 종목은 AI 밸류체인 맵에 자동 배치됩니다." />
-              <GuideStep title="3. 종목별 누적" body="이후 세부 리서치는 종목 페이지에서 항목별로 채워갑니다." />
-            </div>
-
-            <div className="mt-4 overflow-hidden rounded-md border border-slate-800 bg-slate-950">
-              <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-                <span className="text-xs text-slate-500">최초 분석 프롬프트</span>
-                <button
-                  type="button"
-                  onClick={copyMainPrompt}
-                  className="relative h-7 w-7 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800"
-                  title="프롬프트 복사"
-                  aria-label="프롬프트 복사"
-                >
-                  <span className="absolute left-[9px] top-[7px] h-3 w-3 rounded-sm border border-slate-300" />
-                  <span className="absolute left-[6px] top-[10px] h-3 w-3 rounded-sm border border-slate-500 bg-slate-900" />
-                </button>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <GuideStep title="1. 섹터 만들기" body="GPU, 전력/냉각처럼 직접 보고 싶은 AI 인프라 섹터를 만듭니다." />
+                <GuideStep title="2. 관심종목 추가" body="내가 고른 종목만 섹터에 넣습니다. 자동 분류 종목은 메인에 보이지 않습니다." />
+                <GuideStep title="3. 종목별 누적" body="종목을 클릭해 상세 페이지에서 가치투자 리서치와 시장 데이터를 쌓습니다." />
               </div>
-              <pre className="max-h-80 overflow-auto p-4 text-xs leading-relaxed text-slate-300">
-                {thesisPrompt}
-              </pre>
+
+              <div className="mt-4 overflow-hidden rounded-md border border-slate-800 bg-slate-950">
+                <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+                  <span className="text-xs text-slate-500">최초 분석 프롬프트</span>
+                  <button
+                    type="button"
+                    onClick={copyMainPrompt}
+                    className="relative h-7 w-7 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800"
+                    title="프롬프트 복사"
+                    aria-label="프롬프트 복사"
+                  >
+                    <span className="absolute left-[9px] top-[7px] h-3 w-3 rounded-sm border border-slate-300" />
+                    <span className="absolute left-[6px] top-[10px] h-3 w-3 rounded-sm border border-slate-500 bg-slate-900" />
+                  </button>
+                </div>
+                <pre className="max-h-80 overflow-auto p-4 text-xs leading-relaxed text-slate-300">
+                  {thesisPrompt}
+                </pre>
+              </div>
+              {promptCopied && <p className="mt-2 text-xs text-emerald-300">복사됨</p>}
             </div>
-            {promptCopied && <p className="mt-2 text-xs text-emerald-300">복사됨</p>}
-          </section>
+          </details>
         </section>
       </main>
     </div>

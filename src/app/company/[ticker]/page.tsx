@@ -43,6 +43,8 @@ type StockProfile = {
   oneLineThesis?: string;
   businessModel?: string;
   status?: string;
+  heatmapSectorId?: string;
+  heatmapWeight?: number | null;
   updatedAt: string;
 };
 
@@ -156,10 +158,18 @@ type AppState = {
   theses: ThesisSnapshot[];
   dailyChecks: Array<{ id: string; ticker: string; checkDate: string; action?: string; memo?: string }>;
   aiNotes: AiNote[];
+  heatmapSectors?: Array<{
+    id: string;
+    name: string;
+    color: string;
+    order: number;
+  }>;
   companyDetails?: Record<string, CompanyDetail>;
 };
 
 const STORAGE_KEY = "ai-map-thesis-os-v1";
+
+const SECTOR_COLORS = ["#10b981", "#38bdf8", "#818cf8", "#f59e0b", "#22d3ee", "#fb7185", "#a78bfa", "#94a3b8"];
 
 const LAYERS = [
   { id: "GPU/ASIC", label: "GPU/ASIC", color: "bg-emerald-400", border: "border-emerald-500" },
@@ -177,6 +187,7 @@ const emptyState: AppState = {
   theses: [],
   dailyChecks: [],
   aiNotes: [],
+  heatmapSectors: [],
   companyDetails: {},
 };
 
@@ -412,6 +423,30 @@ function saveState(next: AppState) {
   return next;
 }
 
+function repairHeatmapSectors(state: AppState): AppState {
+  const existing = state.heatmapSectors ?? [];
+  if (existing.length > 0) return state;
+
+  const profiles = Object.values(state.profiles ?? {}).filter((profile) => profile.heatmapSectorId);
+  if (profiles.length === 0) return { ...state, heatmapSectors: [] };
+
+  const byId = new Map<string, string>();
+  for (const profile of profiles) {
+    if (!profile.heatmapSectorId) continue;
+    byId.set(profile.heatmapSectorId, profile.sector || profile.aiValueChain?.[0] || "미분류");
+  }
+
+  return {
+    ...state,
+    heatmapSectors: [...byId.entries()].map(([id, name], index) => ({
+      id,
+      name,
+      color: SECTOR_COLORS[index % SECTOR_COLORS.length],
+      order: index,
+    })),
+  };
+}
+
 function dday(date: string) {
   if (!date) return "";
   const a = new Date(`${today()}T00:00:00`).getTime();
@@ -632,13 +667,14 @@ export default function CompanyPage() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as AppState;
-        setState({
+        setState(repairHeatmapSectors({
           profiles: parsed.profiles ?? {},
           theses: parsed.theses ?? [],
           dailyChecks: parsed.dailyChecks ?? [],
           aiNotes: parsed.aiNotes ?? [],
+          heatmapSectors: parsed.heatmapSectors ?? [],
           companyDetails: parsed.companyDetails ?? {},
-        });
+        }));
       }
     } catch {
       setState(emptyState);
