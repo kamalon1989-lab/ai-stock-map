@@ -1115,13 +1115,25 @@ export default function MapPage() {
         for (const data of results) {
           const ticker = asTicker(data.ticker);
           if (!ticker) continue;
+          const previousMarketData = detailsNext[ticker]?.marketData as MarketData | undefined;
+          const previousSnapshot = previousMarketData?.marketSnapshot ?? {};
+          const incomingSnapshot = data.marketSnapshot ?? {};
+          const marketDataNext = {
+            ...(previousMarketData ?? {}),
+            ...data,
+            marketSnapshot: {
+              ...previousSnapshot,
+              ...incomingSnapshot,
+              marketCap: incomingSnapshot.marketCap ?? previousSnapshot.marketCap ?? null,
+            },
+          };
           detailsNext[ticker] = {
             ...(detailsNext[ticker] ?? {}),
             valuation: {
               ...(detailsNext[ticker]?.valuation ?? {}),
               ...(data.valuation ?? {}),
             },
-            marketData: data,
+            marketData: marketDataNext,
           };
           if (profilesNext[ticker]) {
             profilesNext[ticker] = {

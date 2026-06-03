@@ -1003,7 +1003,20 @@ export default function CompanyPage() {
       const data = await response.json() as MarketData & { error?: string };
       if (!response.ok) throw new Error(data.error || "시장 데이터를 가져오지 못했어요.");
 
-      setMarketData(data);
+      const previousMarketData = marketData ?? detail.marketData ?? null;
+      const previousSnapshot = previousMarketData?.marketSnapshot ?? {};
+      const incomingSnapshot = data.marketSnapshot ?? {};
+      const mergedMarketData = {
+        ...(previousMarketData ?? {}),
+        ...data,
+        marketSnapshot: {
+          ...previousSnapshot,
+          ...incomingSnapshot,
+          marketCap: incomingSnapshot.marketCap ?? previousSnapshot.marketCap ?? null,
+        },
+      };
+
+      setMarketData(mergedMarketData);
 
       const apiValuation = data.valuation ?? {};
       const keepManual = <K extends keyof Valuation>(key: K) =>
@@ -1040,7 +1053,7 @@ export default function CompanyPage() {
       ];
 
       updateDetail({
-        marketData: data,
+        marketData: mergedMarketData,
         valuation: nextValuation,
         catalysts: nextCatalysts,
         quarterlyData: mergedQuarterly,

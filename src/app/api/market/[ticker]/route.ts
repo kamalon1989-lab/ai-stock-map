@@ -83,6 +83,15 @@ async function fetchYahooQuote(ticker: string) {
   }
 }
 
+async function fetchYahooQuoteSummary(ticker: string) {
+  try {
+    const data = await fetchJson(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=price`);
+    return data?.quoteSummary?.result?.[0]?.price ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchFinnhub(path: string, params: Record<string, string>) {
   const token = process.env.FINNHUB_API_KEY;
   if (!token) return null;
@@ -237,10 +246,11 @@ export async function GET(_: Request, { params }: { params: { ticker: string } }
   const ticker = params.ticker.toUpperCase();
 
   try {
-    const [chart, sec, quote, finnhubQuote, finnhubMetric, finnhubTarget, finnhubEarnings] = await Promise.all([
+    const [chart, sec, quote, yahooSummaryPrice, finnhubQuote, finnhubMetric, finnhubTarget, finnhubEarnings] = await Promise.all([
       fetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1y&interval=1d`),
       fetchSecLinks(ticker),
       fetchYahooQuote(ticker),
+      fetchYahooQuoteSummary(ticker),
       fetchFinnhub("/quote", { symbol: ticker }),
       fetchFinnhub("/stock/metric", { symbol: ticker, metric: "all" }),
       fetchFinnhub("/stock/price-target", { symbol: ticker }),
@@ -251,12 +261,12 @@ export async function GET(_: Request, { params }: { params: { ticker: string } }
     const chartMetrics = buildChartMetrics(chart);
     const chartMeta = chart?.chart?.result?.[0]?.meta ?? {};
     const metric = finnhubMetric?.metric as Record<string, unknown> | undefined;
-    const currentPrice = asNumber(finnhubQuote?.c) ?? quote?.regularMarketPrice ?? chartMetrics.currentPrice ?? chartMeta.regularMarketPrice ?? null;
-    const dayChangePercent = asNumber(finnhubQuote?.dp) ?? quote?.regularMarketChangePercent ?? chartMetrics.dayChangePercent ?? null;
+    const currentPrice = asNumber(finnhubQuote?.c) ?? quote?.regularMarketPrice ?? raw(yahooSummaryPrice?.regularMarketPrice) ?? chartMetrics.currentPrice ?? chartMeta.regularMarketPrice ?? null;
+    const dayChangePercent = asNumber(finnhubQuote?.dp) ?? quote?.regularMarketChangePercent ?? raw(yahooSummaryPrice?.regularMarketChangePercent) ?? chartMetrics.dayChangePercent ?? null;
     const eps = metricValue(metric, ["epsInclExtraItemsTTM", "epsExclExtraItemsTTM", "epsNormalizedAnnual"]) ?? quote?.epsTrailingTwelveMonths ?? annualValue(facts, "EarningsPerShareDiluted");
     const shares = latestValue(facts, "EntityCommonStockSharesOutstanding");
     const marketCapMillions = metricValue(metric, ["marketCapitalization"]);
-    const marketCap = marketCapMillions ? marketCapMillions * 1_000_000 : quote?.marketCap ?? (currentPrice && shares ? currentPrice * shares : null);
+    const marketCap = marketCapMillions ? marketCapMillions * 1_000_000 : quote?.marketCap ?? raw(yahooSummaryPrice?.marketCap) ?? (currentPrice && shares ? currentPrice * shares : null);
     const per = metricValue(metric, ["peBasicExclExtraTTM", "peInclExtraTTM", "peNormalizedAnnual"]) ?? quote?.trailingPE ?? (currentPrice && eps ? currentPrice / eps : null);
     const forwardPer = metricValue(metric, ["forwardPE", "peForward"]);
     const forwardEps = quote?.epsForward ?? (currentPrice && forwardPer ? currentPrice / forwardPer : null);
@@ -268,7 +278,7 @@ export async function GET(_: Request, { params }: { params: { ticker: string } }
       ticker,
       source: process.env.FINNHUB_API_KEY ? "Finnhub + Yahoo chart + SEC public data" : "Yahoo chart + SEC public data",
       fetchedAt: new Date().toISOString(),
-      companyName: sec?.companyName ?? ticker,
+      companyName: sec?.companyName ?? yahooSummaryPrice?.longName ?? yahooSummaryPrice?.shortName ?? quote?.longName ?? quote?.shortName ?? ticker,
       valuation: {
         currentPrice,
         eps,
