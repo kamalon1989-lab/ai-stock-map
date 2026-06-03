@@ -1361,7 +1361,7 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
   return (
     <div className="min-h-screen bg-[#0b0d12] text-slate-100">
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">AI Map Thesis OS</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">AI 밸류체인 투자 판단 보드</h1>
@@ -1377,15 +1377,15 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-5">
-        <section className="space-y-5">
-          <div className="grid gap-3 md:grid-cols-3">
+      <main className="mx-auto max-w-[1800px] px-4 py-5">
+        <section className="flex flex-col gap-5">
+          <div className="order-2 grid gap-3 md:grid-cols-3">
             <Metric label="내 섹터" value={heatmapSectors.length} />
             <Metric label="히트맵 종목" value={heatmapProfiles.length} />
             <Metric label="전체 저장 종목" value={profiles.length} />
           </div>
 
-          <section className="rounded-lg border border-slate-800 bg-slate-900/45 p-4">
+          <section className="order-1 flex flex-col rounded-lg border border-slate-800 bg-slate-900/45 p-4">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">나만의 AI 인프라 스탁 히트맵</h2>
@@ -1424,7 +1424,9 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
+            <details className="order-4 mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+              <summary className="cursor-pointer font-semibold">히트맵 구성 도구</summary>
+              <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
               <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
                 <h3 className="font-semibold">섹터 만들기</h3>
                 <div className="mt-3 flex gap-2">
@@ -1495,7 +1497,7 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
                 </div>
                 <p className="mt-2 text-xs text-slate-500">관심도는 시가총액 데이터가 없을 때 타일 크기를 정하는 수동 가중치입니다.</p>
               </div>
-            </div>
+              </div>
 
             <details className="mt-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
               <summary className="cursor-pointer font-semibold">AI JSON으로 섹터/종목 한 번에 추가</summary>
@@ -1536,8 +1538,9 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
                 </div>
               </div>
             </details>
-            {message && <p className="mt-3 text-sm text-slate-400">{message}</p>}
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
+            </details>
+            {message && <p className="order-3 mt-3 text-sm text-slate-400">{message}</p>}
+            <div className="order-1 mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
               <span className="rounded border border-slate-800 bg-slate-950 px-2 py-1">
                 시가총액 데이터 {marketCapCount}/{heatmapProfiles.length}
               </span>
@@ -1551,7 +1554,7 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
               )}
             </div>
 
-            <div className="mt-4 rounded-lg border border-slate-800 bg-black/30 p-3">
+            <div className="order-2 mt-3 rounded-lg border border-slate-800 bg-black/30 p-3">
               {heatmapSectors.length === 0 ? (
                 <div className="flex min-h-72 items-center justify-center rounded-md border border-dashed border-slate-700 text-sm text-slate-500">
                   섹터를 추가하면 나만의 AI 인프라 히트맵이 시작됩니다.
@@ -1564,7 +1567,7 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
                     <span className="rounded border border-slate-700 bg-black/70 px-2 py-1">색상: {colorMode === "dayChangePercent" ? "오늘 변동률" : colorMode === "return3m" ? "3개월 수익률" : colorMode === "return1y" ? "1년 수익률" : "52주 고점 대비"}</span>
                     <span className="rounded border border-slate-700 bg-black/70 px-2 py-1">시총 {marketCapCount}/{heatmapProfiles.length}</span>
                   </div>
-                  <div className="relative h-[720px] overflow-hidden rounded-md border border-slate-800 bg-black">
+                  <div className="relative h-[min(78vh,900px)] min-h-[640px] overflow-hidden rounded-md border border-slate-800 bg-black">
                   {heatmapSectorRects.map(({ item: node, x, y, w, h }) => {
                     const stockRects = treemapLayout(node.items, treemapSizeFor);
                     const sectorTooSmall = w < 18 || h < 16;
@@ -1646,7 +1649,7 @@ ${selected.aiValueChain.map((item) => `<span class="pill">${item}</span>`).join(
               )}
             </div>
 
-            <details className="mt-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+            <details className="order-6 mt-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
               <summary className="cursor-pointer font-semibold">히트맵 종목 관리</summary>
               <div className="mt-3 max-h-80 overflow-auto rounded-md border border-slate-800">
                 <table className="w-full min-w-[760px] border-collapse text-sm">
